@@ -652,3 +652,13 @@ lc_get_keystroke (void)
 {
     return GetKeystroke ();
 }
+
+void
+draw_border (void)
+{
+}
+
+void
+init_mouse (void)
+{
+}

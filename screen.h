@@ -23,6 +23,9 @@ extern unsigned char start_font3[4096];
 int monthgraph_style;
 int mps_global_style;
 
+/* This is on in screen_full_refresh, used in *_refresh() */
+extern char screen_refreshing;
+
 
 char* current_month (int current_time);
 void draw_cb_box (int row, int col, int checked);
@@ -39,6 +42,17 @@ void advance_monthgraph_style (void);
 void refresh_monthgraph (void);
 void draw_small_yellow_bezel (int x, int y, int h, int w);
 void init_pbars (void);
+void Fgl_getrect(Rect * r, void * buffer);
+void Fgl_putrect(Rect *r, void * buffer);
+void mini_screen_help (void);
+void status_message(char * message, int colour);
+void print_time_for_year (void);
+void rotate_main_screen (void);
+
+/* Miniscreen */
+void init_mini_map_mouse(void);
+void mini_map_handler(int x, int y, int button);
+void mini_aux_handler(int x, int y, int button);
 
 #define CB_SPACE 20 // space between checkbuttons for market/port
 

@@ -2,7 +2,7 @@
                      **  Welcome to lincity  **
 
 
-This is the README for LinCity BETA 1 (Version 1.12-pre42 or later)
+This is the README for LinCity, pre-release version.  
 
 
 WHAT IS LINCITY
@@ -19,16 +19,29 @@ broke and build rockets to escape from a pollution ridden and resource
 starved planet, it's up to you. Due to the finite resources available in any
 one place, this is not a game that you can leave for long periods of time.
 
-The LinCity home page is located at:
+Lincity recently moved to sourceforge.net.  This brings new CVS
+access, mailing lists, and web pages.  If you are subscribed to 
+lincity-users@floot.demon.co.uk, please also subscribe to the new
+list, shown below, and make all of your posts there.  Please also note
+the new home page, which is not yet complete.  Anyone with an eye for
+design and a desire to help is welcome to make suggestions or design a
+page to replace this one.
 
-    http://www.floot.demon.co.uk/lincity.html
+The LinCity home page is now located at:
 
-Or to join the mailing list, send mail to:
+    http://lincity.sourceforge.net
 
-      majordomo@floot.demon.co.uk   with
+The official users mailing list (mailman) can be subscribed to by visiting:
 
-      subscribe lincity     in the body of your mail.
+    http://lists.sourceforge.net/lists/listinfo/lincity-users
 
+CVS commit notification can be had at:
+
+    http://lists.sourceforge.net/lists/listinfo/lincity-commits    
+
+Additionally, our sorceforge page is:
+
+    http://sourceforge.net/projects/lincity/
 
 REQUIREMENTS
 ============
@@ -39,6 +52,9 @@ REQUIREMENTS
       OR	 X11.
 
       OR	 A Win32 OS.
+
+      NOTE: SVGA and Win32 are currently mostly untested for version 1.12.
+      Caveat emptor, and send us a patch if you can.
 
    *  A graphics card supported by your above choice.
 
@@ -51,13 +67,13 @@ REQUIREMENTS
 INSTALLATION (UNIX)
 ===================
 
-To install LinCity, (as root) untar the file lincity-1.12.tar.gz 
+To install LinCity, (as root) untar the file lincity-1.12pre48.tar.gz 
 
-     tar -xzvf lincity-1.12.tar.gz
+     tar -xzvf lincity-1.12pre48.tar.gz
 
 You now want to compile the source
 
-      cd lincity-1.12
+      cd lincity-1.12pre48
       ./configure
       make
       make install
@@ -68,6 +84,15 @@ directory, you must use the --prefix flag when you configure the package.
 For example:
 
       ./configure --prefix=/usr/mylocal
+
+If you are installing a version downloaded from the cvs server, the 
+timestamps may be incorrect, which will cause the build to fail.  In this 
+case, you need to run a script to fix the timestamps:
+
+      ./fix-timestamps.sh
+      ./configure
+      make
+      make install
 
 
 INSTALLING PICEDIT
@@ -99,16 +124,17 @@ By the way, xpicedit does not work on hi-color or full-color displays.
 INSTALLATION (WIN32)
 ====================
 Simply unpack the archive, and double click on the LINCITY.EXE icon.  
-Be sure to use a program such as UNZIP which preserves long filenames.  
 You can get your free copy of UNZIP from the INFO-ZIP web page at
 
     http://www.cdrom.com/pub/infozip/UnZip.html.
 
 
-RUNNING LINCITY (MONOLITHIC)
-============================
+RUNNING LINCITY (UNIX)
+======================
 
-Usually you will invoke the game with    lincity   or   xlincity
+Usually you will invoke the game with 'lincity' or 'xlincity'.  
+Typing 'lincity' will run the SVGA version, while typing 'xlincity' will
+run the X Windows version.  The SVGA version will not run under X.
 
              lincity  [opts]
              xlincity [opts]
@@ -128,48 +154,10 @@ The following options apply to both.
 
 This option only applies to xlincity.
 
-        -b   Do not include the extra border around the game.
+	-r   Add an extra border around the game.
         -d   Double the size of the window to 1280x960
 
-
-INTERNATIONALIZATION
-====================
-
-Lincity supports a modest amount of internationalization.  Only languages
-that can be represented using iso8859-1 or iso8859-2 font are currently
-supported.
-
-If you wish to make a translation for your language, first get the sample 
-Catalan to display correctly.  After doing a configure, make and make install,
-set LANGUAGE environment variable to "ca", and run.  Only the messages will 
-be in Catalan (since that is the only part of the translation that is 
-done), but at least you can see the "Not enough tech" message if you try 
-to select a rocket ship.
-
-There are three parts to making a tranlation: making help files, making 
-message files, and making a .po file.  The messages and help files are 
-just a matter of editing the ASCII files, and installing them.  If your 
-language is "ca", they should go in the directories messages/ca and 
-help/ca underneath /usr/local/share/lincity.
-
-The .po file is a matter of translating these and getting them to compile 
-correctly.  You'll need to edit the autoconf files to get this to work.
-Send an email to the current maintainer and he will help you.
-
-
-RUNNING LINCITY (CLIENT/SERVER)
-===============================
-
-Client/server version is disabled for this version.  If you are interested
-in working on a client/server version, please send email to the 
-current maintainter or to the lincity mailing list.
-
-Run the applications "lcserver" to start the server.  At this time, 
-the only port that the server will listen at 5139.  Edit the 
-file "protocol.h" to change this.  Once the server is running, 
-clients should connect by clicking on the "Connect to Server" button
-from the LinCity main screen.  The server supports up to 16 simultaneous 
-connections at this time.
+	-b   *obsolete* omit border around game.  Now on by default.
 
 
 NOTES FOR X VERSION
@@ -225,14 +213,6 @@ C:\LINCITY???\OPENING directory, and look for the file winfont_8x8.fnt.
 If this file does not exists (or if it is called winfont_.fnt), then
 is definitely the problem.  Reinstall the archive using the UNZIP program.
 
-If you get a message such as "Error. Can't find LINCITY_HOME", this
-means that LinCity can't find it's home directory.  The program searches
-for the file "Colour.pal" in the following three directories (in order):
-
-	The current working directory
-	The directory pointed to by the $LINCITY_HOME environment variable
-	The default directory
-
 Multi-transport is now supported.  Simply shift-click at the beginning
 and shift-click at the end, and you'll get a whole line of track, road,
 rail or power lines.  Look for the blue border around the main window to
@@ -247,6 +227,44 @@ can do a "fast scroll" with the SHIFT+ARROW key.
 
 The source code is distributed together with the binary distribution,
 in the file source.tgz.
+
+
+THE LINCITY HOME DIRECTORY
+==========================
+
+If you get a message such as "Error. Can't find LINCITY_HOME", this
+means that Lincity can't find it's home directory.  The program searches
+for the file "colour.pal" in the following three directories (in order).
+So in the worst case, you can set the LINCITY_HOME environment variable.
+
+	The directory pointed to by the $LINCITY_HOME environment variable
+	The current working directory
+	The default directory
+
+
+INTERNATIONALIZATION
+====================
+
+Lincity supports a modest amount of internationalization.  Only languages
+that can be represented using iso8859-1 or iso8859-2 font are currently
+supported.
+
+If you wish to make a translation for your language, first get the sample 
+Catalan to display correctly.  After doing a configure, make and make install,
+set LANGUAGE environment variable to "ca", and run.  Only the messages will 
+be in Catalan (since that is the only part of the translation that is 
+done), but at least you can see the "Not enough tech" message if you try 
+to select a rocket ship.
+
+There are three parts to making a tranlation: making help files, making 
+message files, and making a .po file.  The messages and help files are 
+just a matter of editing the ASCII files, and installing them.  If your 
+language is "ca", they should go in the directories messages/ca and 
+help/ca underneath /usr/local/share/lincity.
+
+The .po file is a matter of translating these and getting them to compile 
+correctly.  You'll need to edit the autoconf files to get this to work.
+Send an email to the current maintainer and he will help you.
 
 
 COMPILATION UNDER WIN32
@@ -266,6 +284,22 @@ Makefile.  The file Makefile.am contains the information about which
 files you need to compile.  In addition to the supplied files, you must 
 link with your compiler supplied VERSION.LIB in addition to the standard 
 WIN32 libraries.  You'll need to link with WSOCK32.LIB also.
+
+Of note, lincity 1.11 was patched to compile with the Borland compiler 
+too.  If this is not still working in 1.12, please send me a patch 
+and I'll be happy to add it to the archive.
+
+
+RUNNING LINCITY (CLIENT/SERVER)
+===============================
+
+Client/server version is disabled for this version.  In fact, the code 
+was completely removed as of version 1.12pre50, so the last version to 
+contain the (non-functioning) network code was 1.12pre49.
+
+If you are interested in working on a client/server version, please send 
+your email to the current maintainter or to the lincity mailing list.
+We are still interested in doing this!
 
 
 BUGS
@@ -291,15 +325,19 @@ an intergalactic space simulation with all the trimmings.  But from
 1998-1999, LinCity underwent a period of hibernation, with only minor 
 patches being applied.  
 
-Development has been restarted in late 1999 by Greg Sharp to provide some 
-moderate improvents, including networking support, GUI improvements and 
-perhaps some additional gameplay developments.  Version 1.12 is the results 
-of this effort.
+Development was restarted in late 1999 by Greg Sharp to provide
+some moderate improvents, including networking support, GUI
+improvements and additional gameplay developments.  
 
+In mid-2001, Greg was joined by Corey Keasling, who helped to bring
+the game to sourceforge.net.  In late 2001, Corey became
+co-maintainer.  Having him partially in charge is a devastating blow
+to the game, ensuring no stable release until lincity 1.12pre2451.
 
 COPYRIGHT
 =========
 LinCity is copyright (c) I J Peters 1995-1997, (c) Greg Sharp 1997-2001.
+Portions are copyright (c) Corey Keasling 2000-2001.
 
 You may freely copy, distribute and modify lincity under the terms of the
 

@@ -16,10 +16,7 @@ char progbox[(PROGBOXW + 16) * (PROGBOXH + 16)];
 
 int no_init_help;
 
-int select_button_type[NUMOF_SELECT_BUTTONS];
-char *select_button_graphic[NUMOF_SELECT_BUTTONS];
-int select_button_tflag[NUMOF_SELECT_BUTTONS];
-char select_button_help[NUMOF_SELECT_BUTTONS][20];
+int main_screen_flag = MAIN_SCREEN_NORMAL_FLAG;
 
 int mappoint_stats_flag = 0, mappoint_stats_time = 0;
 int mini_screen_flags = MINI_SCREEN_NORMAL_FLAG;
@@ -32,7 +29,8 @@ int mouse_initialized = 0;
 int cs_mouse_x, cs_mouse_y, cs_mouse_button;	/* current mouse status */
 int cs_mouse_shifted = 0;	/* shift key pressed with mouse. */
 int cs_mouse_xmax, cs_mouse_ymax, omx, omy, mox = 10, moy = 10;
-int cs_mouse_button_repeat, mouse_hide_count, cs_mouse_button_delay;
+
+int mouse_hide_count;
 #if defined (WIN32)
 /* int cs_current_mouse_x, cs_current_mouse_y, cs_current_mouse_button; */
 int cs_square_mouse_visible = 0;
@@ -48,7 +46,7 @@ int mouse_type = MOUSE_TYPE_NORMAL;
 
 int mt_start_posx, mt_start_posy, mt_current_posx, mt_current_posy;
 
-int screen_refresh_flag = 1;
+int screen_refresh_flag = 0;
 
 char *months[] =
 {N_("Jan"), N_("Feb"), N_("Mar"), N_("Apr"),
@@ -108,7 +106,7 @@ char *quit_button_graphic, *load_button_graphic, *save_button_graphic;
 char *menu_button_graphic;
 int quit_flag, network_flag, load_flag, save_flag;
 int prefs_flag = 0, prefs_drawn_flag = 0;
-int monument_bul_flag, river_bul_flag;
+int monument_bul_flag, river_bul_flag, shanty_bul_flag;
 int must_release_button = 0, let_one_through = 0;
 
 int db_yesbox_x1, db_yesbox_x2, db_yesbox_y1, db_yesbox_y2;

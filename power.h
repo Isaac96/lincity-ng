@@ -25,9 +25,10 @@ void do_power_substation(int x, int y);
 void do_power_source(int x, int y);
 void do_power_source_coal(int x, int y);
 void do_power_line(int x, int y);
+void power_time_step ();
 
 /* intended private */
-void recurse_power_grid (int startx, int starty);
+void recurse_power_grid (int startx, int starty, int steps);
 int check_grid(int x, int y, int xi, int yi);
 void project_power(int x, int y);
 
@@ -48,12 +49,6 @@ void project_power(int x, int y);
  (MP_GROUP(x,y) == GROUP_POWER_LINE) || \
  (MP_GROUP(x,y) == GROUP_SOLAR_POWER) || \
  (MP_GROUP(x,y) == GROUP_SUBSTATION))
-
-#define XY_IS_TRANSPORT(x,y) \
-((MP_GROUP(x,y) == GROUP_TRACK) || \
- (MP_GROUP(x,y) == GROUP_ROAD) || \
- (MP_GROUP(x,y) == GROUP_RAIL) || \
- (MP_GROUP(x,y) == GROUP_POWER_LINE))
 
 #define XY_IS_WATER(x,y) (MP_GROUP(x,y) == GROUP_WATER)
 

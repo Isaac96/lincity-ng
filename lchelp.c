@@ -13,10 +13,10 @@
 #include "fileutil.h"
 #include "lin-city.h"
 #include "lchelp.h"
-#include "clistubs.h"
 #include "mouse.h"
 #include "geometry.h"
 #include "lcintl.h"
+#include "module_buttons.h"
 
 /* About help history:
    History count starts at 0, but is immediately incremented to 1.
@@ -36,7 +36,6 @@ activate_help (char *hp)
 #else
     Fgl_setfontcolors (HELPBACKGROUNDCOLOUR, TEXT_FG_COLOUR);
 #endif
-    unrequest_main_screen ();
     draw_help_page (hp);
 }
 
@@ -50,22 +49,6 @@ do_help_mouse (int x, int y, int mbutton)
     }
     if (block_help_exit)
 	return;
-
-    /* GCS ----------------------------------------------------
-       (1) help button no longer exists.
-       (2) this is never called for a right button.  Should it?
-    */
-#if defined (commentout)
-    if (mouse_in_rect (&scr.help_button,x,y) && help_history_count > 1) {
-	help_history_count -= 2;
-	draw_help_page (help_button_history[help_history_count]);
-    } else if (mbutton == LC_MOUSE_RIGHTBUTTON) {
-	if (mouse_in_rect (&scr.select_buttons,x,y))
-	    do_mouse_select_buttons (x, y, LC_MOUSE_RIGHTBUTTON);
-	else
-	    do_mouse_other_buttons (x, y, mbutton);
-    }
-#endif
 
     help_flag = 0;
 #ifdef USE_EXPANDED_FONT
@@ -99,6 +82,7 @@ draw_help_page (char *helppage)
 	    goto continue_with_help;
 	}
 
+	/* XXX: WCK: residential selection is really ugly */
 	if (help_history_count > 0 &&
 	    strcmp (help_button_history[help_history_count - 1],
 		    "res.tmp") == 0)
@@ -107,29 +91,49 @@ draw_help_page (char *helppage)
 	    case (-2):
 	    case (-1):
 	    case (0):
+#if defined (commentout)
 	    case (1):
-		selected_type = CST_RESIDENCE_LL;
-		selected_type_cost = get_group_cost (GROUP_RESIDENCE_LL);
+		selected_module_type = CST_RESIDENCE_LL;
+		selected_module_cost = get_group_cost (GROUP_RESIDENCE_LL);
 		break;
 	    case (2):
-		selected_type = CST_RESIDENCE_ML;
-		selected_type_cost = get_group_cost (GROUP_RESIDENCE_ML);
+		selected_module_type = CST_RESIDENCE_ML;
+		selected_module_cost = get_group_cost (GROUP_RESIDENCE_ML);
 		break;
 	    case (3):
-		selected_type = CST_RESIDENCE_HL;
-		selected_type_cost = get_group_cost (GROUP_RESIDENCE_HL);
+		selected_module_type = CST_RESIDENCE_HL;
+		selected_module_cost = get_group_cost (GROUP_RESIDENCE_HL);
 		break;
 	    case (4):
-		selected_type = CST_RESIDENCE_LH;
-		selected_type_cost = get_group_cost (GROUP_RESIDENCE_LH);
+		selected_module_type = CST_RESIDENCE_LH;
+		selected_module_cost = get_group_cost (GROUP_RESIDENCE_LH);
 		break;
 	    case (5):
-		selected_type = CST_RESIDENCE_MH;
-		selected_type_cost = get_group_cost (GROUP_RESIDENCE_MH);
+		selected_module_type = CST_RESIDENCE_MH;
+		selected_module_cost = get_group_cost (GROUP_RESIDENCE_MH);
 		break;
 	    case (6):
-		selected_type = CST_RESIDENCE_HH;
-		selected_type_cost = get_group_cost (GROUP_RESIDENCE_HH);
+		selected_module_type = CST_RESIDENCE_HH;
+		selected_module_cost = get_group_cost (GROUP_RESIDENCE_HH);
+		break;
+#endif
+	    case (1):
+		set_selected_module (CST_RESIDENCE_LL);
+		break;
+	    case (2):
+		set_selected_module (CST_RESIDENCE_ML);
+		break;
+	    case (3):
+		set_selected_module (CST_RESIDENCE_HL);
+		break;
+	    case (4):
+		set_selected_module (CST_RESIDENCE_LH);
+		break;
+	    case (5):
+		set_selected_module (CST_RESIDENCE_MH);
+		break;
+	    case (6):
+		set_selected_module (CST_RESIDENCE_HH);
 		break;
 	    }
 	}
@@ -259,7 +263,6 @@ draw_help_page (char *helppage)
 #else
 	Fgl_setfontcolors (TEXT_BG_COLOUR, TEXT_FG_COLOUR);
 #endif
-	request_main_screen ();
 	refresh_main_screen ();
 	return;
     }
@@ -274,9 +277,10 @@ draw_help_page (char *helppage)
     strcpy (helppage_short, helppage);
 
     /* Right click on mini-screen */
-    if (strncmp (helppage, "mini-screen.hlp", 15) == 0)
-    {
+    if (strncmp (helppage, "mini-screen.hlp", 15) == 0) {
 	draw_big_mini_screen ();
+    } else if (strncmp (helppage, "mini-in-main.hlp", 17) == 0) {
+	/* do nothing */
     } else {
 	/* This buffer is for the full path of the help file.
 	   The file might be either in the help directory (most cases),
@@ -305,6 +309,7 @@ draw_help_page (char *helppage)
 	while (feof (inf) == 0) {
 	    if (fgets (help_line, MAX_HELP_LINE, inf) == 0)
 		break;
+	    undosify_string (help_line);  /* GCS testing... */
 	    parse_helpline (help_line);
 	}
 	fclose (inf);
@@ -331,6 +336,19 @@ draw_help_page (char *helppage)
     parse_helpline ("tcolour 188 153");
     parse_helpline (_("tbutton 370 387 return-2 OUT"));
     parse_helpline ("tcolour -1 -1");
+#if defined (commentout)
+    if (help_history_count > 0) {
+	parse_helpline ("tcolour 122 153");
+	snprintf (help_line, MAX_HELP_LINE, "tbutton %d %d return-1 %s",
+		  4, mw->h - 13, _("BACK"));
+	parse_helpline (help_line);
+    }
+    parse_helpline ("tcolour 188 153");
+    snprintf (help_line, MAX_HELP_LINE, "tbutton %d %d return-2 %s",
+	      mw->w - 34, mw->h - 13, _("OUT"));
+    parse_helpline (help_line);
+    parse_helpline ("tcolour -1 -1");
+#endif
 
     /* Add help page to history.  If history is going to overflow, 
        throw out oldest page.  */
@@ -409,13 +427,14 @@ parse_textline (char *st)
     /* get rid of the newline */
     if (st[strlen (st) - 1] == 0xa)
 	st[strlen (st) - 1] = 0;
-    /* centre text if x -ve */
-    if (x < 0)
-    {
+    if (x < 0) {
+	/* centre text if x is negative */
 	x = (mw->w / 2) - (strlen (st) * 4);
 	if (x < 0)
 	    return;			/* line was too long */
-
+    } else {
+	/* otherwise adjust x location to within center zone */
+	x = x + (mw->w - 440) / 2;
     }
     /* check to see if text runs off the end */
     if ((int) (strlen (st) * 8) > (mw->w - x))
@@ -485,6 +504,10 @@ draw_help_icon (int x, int y, char *icon)
     for (i = 0; i < l; i++)
 	*(help_graphic + i) = fgetc (inf);
     fclose (inf);
+
+    /* Adjust x location to within center zone */
+    x = x + (mw->w - 440) / 2;
+
     if (x > 0 && y > 0 && ((x + w) < mw->w) && ((y + h) < mw->h))
 	Fgl_putbox (mw->x + x, mw->y + y, w, h, help_graphic);
     return;
@@ -518,13 +541,17 @@ parse_buttonline (char *st)
     /* get rid of the newline */
     if (st[strlen (st) - 1] == 0xa)
 	st[strlen (st) - 1] = 0;
-    /* centre x of box if x -ve */
-    if (x < 0)
-    {
+
+    if (x < 0) {
+	/* centre x of box if x is negative */
 	x = (mw->w / 2) - (w / 2);
 	if (x < 0)
-	    return;
+	    return;			/* line was too long */
+    } else {
+	/* otherwise adjust x location to within center zone */
+	x = x + (mw->w - 440) / 2;
     }
+
     /* see if the button runs off the end */
     if ((x + w) > mw->w)
 	return;
@@ -578,16 +605,13 @@ parse_tbuttonline (char *st)
     sscanf (s1, "tbutton %d %d %s", &x, &y, s);
     /* find start of string */
     i = 0;
-    for (j = 0; j < 4; j++)
-    {
-	while (isspace (st[i]) == 0)
-	{
+    for (j = 0; j < 4; j++) {
+	while (isspace (st[i]) == 0) {
 	    if (st[i] == 0)
 		return;		/* just silently ignore */
 	    i++;
 	}
-	while (isspace (st[i]) != 0)
-	{
+	while (isspace (st[i]) != 0) {
 	    if (st[i] == 0)
 		return;
 	    i++;

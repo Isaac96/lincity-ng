@@ -9,6 +9,9 @@
 #include "lcstring.h"
 #include "ldsvgui.h"
 #include "lcintl.h"
+#include "screen.h"
+#include "pbar.h"
+#include "module_buttons.h"
 
 /* this is for OS/2 - RVI */
 #ifdef __EMX__
@@ -62,11 +65,6 @@
 #endif
 #endif
 
-#if defined (HAVE_POPEN)
-FILE *popen(const char *command, const char *type);
-int pclose(FILE *stream);
-#endif
-
 #include <ctype.h>
 #include "common.h"
 #ifdef LC_X11
@@ -76,11 +74,10 @@ int pclose(FILE *stream);
 #include "lin-city.h"
 #include "cliglobs.h"
 #include "engglobs.h"
-#include "protocol.h"
-#include "clinet.h"
 #include "ldsvguts.h"
 #include "fileutil.h"
 #include "mouse.h"
+#include "stats.h"
 
 /* ---------------------------------------------------------------------- *
  * Private Fn Prototypes
@@ -240,9 +237,8 @@ do_prefs_screen (void)
     Fgl_write (mw->x + x + 2, mw->y + y + 2, "OUT");
 
     draw_prefs_cb ();
-#if !defined (WIN32)
+
     redraw_mouse ();
-#endif
 }
 
 void
@@ -252,6 +248,7 @@ close_prefs_screen (void)
     prefs_drawn_flag = 0;
 }
 
+#if defined (NETWORK_ENABLE)
 void
 do_network_screen (void)
 {
@@ -284,6 +281,7 @@ do_network_screen (void)
     refresh_main_screen ();
     redraw_mouse ();
 }
+#endif
 
 void
 do_save_city ()
@@ -314,6 +312,7 @@ do_save_city ()
     x_key_value = 0;
 #elif defined (WIN32)
     while (0 == (c = GetKeystroke ()));	/* Wait for keystroke */
+    redraw_mouse ();
 #else
     c = getchar ();
     redraw_mouse ();
@@ -342,6 +341,7 @@ do_save_city ()
     cs_mouse_handler (0, 1, 0);
     hide_mouse ();
     Fgl_setfontcolors (TEXT_BG_COLOUR, TEXT_FG_COLOUR);
+    save_flag = 0;
     refresh_main_screen ();
     redraw_mouse ();
 }
@@ -363,7 +363,7 @@ load_opening_city (char *s)
   Fgl_setfontcolors (TEXT_BG_COLOUR, TEXT_FG_COLOUR);
   refresh_main_screen ();
   suppress_ok_buttons = 1;
-  update_select_buttons ();
+  update_avail_modules ();
   suppress_ok_buttons = 0;
   /* GCS: ?? */
   redraw_mouse ();
@@ -435,6 +435,7 @@ do_load_city (void)
 	    Fgl_write (mw->x + 70, mw->y + 310
 		       ,_("Loading scene...  please wait"));
 	    load_saved_city (save_names[c - '0']);
+	    refresh_pbars();
 	}
     }
     db_flag = 0;
@@ -442,9 +443,10 @@ do_load_city (void)
     cs_mouse_handler (0, 1, 0);
     hide_mouse ();
     Fgl_setfontcolors (TEXT_BG_COLOUR, TEXT_FG_COLOUR);
+    load_flag = 0;
     refresh_main_screen ();
     suppress_ok_buttons = 1;
-    update_select_buttons ();
+    update_avail_modules ();
     suppress_ok_buttons = 0;
     redraw_mouse ();
 }
@@ -806,7 +808,7 @@ do_get_nw_server (void)
     Fgl_setfontcolors (TEXT_BG_COLOUR, TEXT_FG_COLOUR);
     refresh_main_screen ();
     suppress_ok_buttons = 1;
-    update_select_buttons ();
+    update_avail_modules ();
     suppress_ok_buttons = 0;
     redraw_mouse ();
 }
