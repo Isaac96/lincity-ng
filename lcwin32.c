@@ -9,14 +9,70 @@
 #include <math.h>
 #include <assert.h>
 #include "lcstring.h"
+#include "lcintl.h"
 #include "lin-city.h"
 #include "common.h"
 #include "lctypes.h"
 #include "pixmap.h"
 #include "screen.h"
+#include "getopt.h"
 
 #define USE_WINDOWS_FONT 1
 #undef USE_WINDOWS_FONT
+
+void
+parse_args (int argc, char **argv)
+{
+    int option;
+    extern char *optarg;
+
+    #ifdef ALLOW_PIX_DOUBLING
+    char* option_string = "brndewR:G:B:D";
+    #else
+    char* option_string = "brnwR:G:B:D";
+    #endif
+    /* GCS FIX:  Need to print usage and exit when illegal option spec'd */
+    while ((option = getopt (argc, argv, option_string)) != EOF) {
+	switch (option) {
+	case 'b':
+	    borderx = 0;
+	    bordery = 0;
+	    break;
+	case 'r':
+	    borderx = BORDERX;
+	    bordery = BORDERY;
+	    break;
+#ifdef ALLOW_PIX_DOUBLING
+	case 'd':
+	    pix_double = 1;
+	    break;
+	case 'e':
+	    pix_double = 0;
+	    break;
+#endif
+	case 'n':
+	    no_init_help = TRUE;
+	    break;
+	case 'w':
+	    gamma_correct_red = GAMMA_CORRECT_RED;
+	    gamma_correct_green = GAMMA_CORRECT_GREEN;
+	    gamma_correct_blue = GAMMA_CORRECT_BLUE;
+	    break;
+	case 'R':
+	    sscanf (optarg, "%f", &gamma_correct_red);
+	    break;
+	case 'G':
+	    sscanf (optarg, "%f", &gamma_correct_green);
+	    break;
+	case 'B':
+	    sscanf (optarg, "%f", &gamma_correct_blue);
+	    break;
+	case 'D':
+	    command_line_debug = 1;
+	    break;
+	}
+    }
+}
 
 int
 AdjustX (int x)
@@ -53,7 +109,7 @@ UnAdjustY (int y)
 void
 HandleError (char *description, int degree)
 {
-    MessageBox (NULL, description, "ERROR", MB_OK);
+    MessageBox (NULL, description, _("ERROR"), MB_OK);
     if (degree == FATAL)
     {
         exit (-1);
@@ -126,10 +182,12 @@ EnumFontFamProc (ENUMLOGFONT FAR * lpelf,     // pointer to logical-font data
 		 LPARAM lParam	// address of application-defined data  
 )
 {
+    int i = 0;
     //  if (0 != strcmp (lpelf->elfLogFont.lfFaceName, "iso8859-1-16x16"))
-    //  if (0 != strcmp (lpelf->elfLogFont.lfFaceName, "Lincity"))
+    if (0 != strcmp (lpelf->elfLogFont.lfFaceName, "Lincity"))
     //  if (0 != strcmp (lpelf->elfLogFont.lfFaceName, "Tester"))
-    if (0 != strcmp (lpelf->elfLogFont.lfFaceName, "iso8859-1-9x15"))
+    //  if (0 != strcmp (lpelf->elfLogFont.lfFaceName, "iso8859-1-9x15"))
+    // if (0 == strcmp (lpelf->elfLogFont.lfFaceName, "iso8859-1-8x8"))
         return 0;
 
     // GCS:  I'm not sure if it's OK to just copy the pointer here.
@@ -145,6 +203,7 @@ void
 init_windows_font (void)
 {
 #if defined (USE_WINDOWS_FONT)
+    int rc;
     LOGFONT logfont;
     int fonts_added = AddFontResource (windowsfontfile);
     if (fonts_added != 1) {
@@ -162,8 +221,9 @@ init_windows_font (void)
 #endif
     // GCS: Hmm.  There must be a way to get this to work on both compilers.  
     //            How about this?
-    EnumFontFamilies (display.hdcMem, "iso8859-1-9x15", (FONTENUMPROC) EnumFontFamProc, (LPARAM) & logfont);
     //EnumFontFamilies (display.hdcMem, "iso8859-1-16x16", (FONTENUMPROC) EnumFontFamProc, (LPARAM) & logfont);
+    //rc = EnumFontFamilies (display.hdcMem, "iso8859-1-8x8", (FONTENUMPROC) EnumFontFamProc, (LPARAM) & logfont);
+    rc = EnumFontFamilies (display.hdcMem, "Lincity", (FONTENUMPROC) EnumFontFamProc, (LPARAM) & logfont);
 
     display.hFont = CreateFontIndirect (&logfont);
     if (!display.hFont) {
@@ -320,7 +380,6 @@ Fgl_line (int x1, int y1, int dummy, int y2, int col)
      /* vertical lines only. */
 {
     RECT rect;
-    int y;
     col &= 0xff;
     pixmap_vline (x1, y1, y2, col);
 
@@ -651,4 +710,14 @@ int
 lc_get_keystroke (void)
 {
     return GetKeystroke ();
+}
+
+void
+draw_border (void)
+{
+}
+
+void
+init_mouse (void)
+{
 }

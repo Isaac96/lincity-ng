@@ -10,8 +10,17 @@
 /* Define to empty if the keyword does not work.  */
 /* #undef const */
 
+/* Define if you have locale.h */
+#define HAVE_LOCALE_H
+
+/* Define if you want to enable foreign language support */
+#define ENABLE_NLS
+
 /* Define as __inline if that's what the C compiler calls it.  */
 #define inline __inline
+
+/* This is not yet fixed for UNIX...  */
+#define snprintf _snprintf
 
 /* Define if you need to in order for stat and other things to work.  */
 /* #undef _POSIX_SOURCE */
@@ -83,4 +92,4 @@
 #define PACKAGE "lincity"
 
 /* Version number of package */
-#define VERSION "1.12pre30"
+#define VERSION "1.13.2"

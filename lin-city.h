@@ -16,6 +16,7 @@
   amount. IMHO 3 is about the maximum useful value, 2 is quite
   comfortable.
     ** This is only relevant for linux-svgalib. **
+XXX: Then it shouldn't be here
 */
 #define MOUSE_SENSITIVITY 1
 
@@ -46,7 +47,7 @@
 
 /* VERSION_INT is used in the load/save code.  All other code uses 
    the symbol VERSION in config.h */
-#define VERSION_INT 112
+#define VERSION_INT 113
 
 /* Don't load if < MIN_LOAD_VERSION */
 #define MIN_LOAD_VERSION 97
@@ -84,7 +85,7 @@
 
 
 /* comment out the the next three lines for _slightly_ faster X drawing. */
-#ifdef LC_X11
+#if defined LC_X11 || defined WIN32
 #define ALLOW_PIX_DOUBLING
 #endif
 
@@ -95,9 +96,9 @@
   You can also set the values from the command line.
    [x]lincity -R 1.0 -G 0.0 -B 0.4  is the same as [x]lincity -w
  */
-#define GAMMA_CORRECT_RED   1.0
-#define GAMMA_CORRECT_GREEN 0.0
-#define GAMMA_CORRECT_BLUE  0.4
+#define GAMMA_CORRECT_RED    ((float) 1.0)
+#define GAMMA_CORRECT_GREEN  ((float) 0.0)
+#define GAMMA_CORRECT_BLUE   ((float) 0.4)
 
 #define PROFILE_COUNTDOWN 10000
 
@@ -124,11 +125,6 @@
 #define BORDERX 30
 #define BORDERY 30
 #endif
-
-#define SELECT_BUTTONS_NEED_TECH
-/*
-  //#define USE_EXPANDED_FONT
-*/
 
 #define TEXT_FG_COLOUR  (white(24))
 #define TEXT_BG_COLOUR  105
@@ -173,6 +169,8 @@
 #define FLAG_MULTI_TRANS_PREV   (0x4000000)
 #define FLAG_POWER_LINE         (0x8000000)
 
+/* XXX: It would appear that the following T_ are used exactly two times each,
+   in market.c.  */
 #define T_FOOD  0
 #define T_JOBS  1
 #define T_COAL  2
@@ -181,6 +179,8 @@
 #define T_STEEL 5
 #define T_WASTE 6
 
+/* XXX: Move me to mouse.h or similar */
+
 #define MT_FAIL     0
 #define MT_START    1
 #define MT_CONTINUE 2
@@ -188,6 +188,8 @@
 
 #define HOF_START 845830134
 #define HOF_STOP 857843038
+
+/* XXX: screen.h? */
 
 #define MINI_SCREEN_NORMAL_FLAG    (0)
 #define MINI_SCREEN_POL_FLAG       (1)
@@ -200,17 +202,23 @@
 #define MINI_SCREEN_HEALTH_COVER   (8)
 #define MINI_SCREEN_COAL_FLAG      (9)
 
+#define MAIN_SCREEN_NORMAL_FLAG    (1)
+#define MAIN_SCREEN_EQUALS_MINI    (2)
+
 #define SEED_RAND
 #define OLD_LC_SAVE_DIR "Lin-city"
 #if defined (WIN32)
 #define LC_SAVE_DIR "SAVED_GAMES"
+#define LINCITYRC_FILENAME "lincity.ini"
 #else
-#define LC_SAVE_DIR ".Lin-city"
+/* GCS: Changed for 1.12 */
+/* #define LC_SAVE_DIR ".Lin-city" */
+#define LC_SAVE_DIR ".lincity"
+#define LINCITYRC_FILENAME ".lincityrc"
 #endif
 #define RESULTS_FILENAME "results"
 
 #define MAX_ICON_LEN 4096
-#define NUMOF_SELECT_BUTTONS 32
 #define WORLD_SIDE_LEN 100
 #define NUMOF_DAYS_IN_MONTH 100
 #define NUMOF_DAYS_IN_YEAR (NUMOF_DAYS_IN_MONTH*12)
@@ -220,28 +228,6 @@
 
 /* interest rate *10  ie 10 is 1% */
 #define INTEREST_RATE 15
-
-#if defined (commentout)
-#define HELP_BUTTON_X 608
-#define HELP_BUTTON_Y 448
-#define HELP_BUTTON_W 32
-#define HELP_BUTTON_H 32
-#define QUIT_BUTTON_X 608
-#define QUIT_BUTTON_Y 416
-#define QUIT_BUTTON_W 32
-#define QUIT_BUTTON_H 32
-#define LOAD_BUTTON_X 576
-#define LOAD_BUTTON_Y 416
-#define LOAD_BUTTON_W 32
-#define LOAD_BUTTON_H 32
-#define SAVE_BUTTON_X 576
-#define SAVE_BUTTON_Y 448
-#define SAVE_BUTTON_W 32
-#define SAVE_BUTTON_H 32
-#endif
-
-#define TESTM_X 50
-#define TESTM_Y 428
 
 #define HELPERRORPAGE "error.hlp"
 #define HELPBACKGROUNDCOLOUR (white(8))
@@ -264,7 +250,6 @@
 #define PROGBOX_DONE_COL 4
 #define PROGBOX_NOTDONE_COL 2
 
-#define POWER_LINE_CAPACITY 1000000
 #define POWERS_SOLAR_OUTPUT 1800
 #define WINDMILL_POWER      450
 #define WINDMILL_JOBS       10
@@ -280,6 +265,7 @@
 #define POWER_RES_OVERHEAD 30
 #define POWERS_COAL_OUTPUT 22000
 #define MAX_COAL_AT_POWER_STATION 100000
+
 #define MAX_ORE_AT_INDUSTRY_L 20000
 #define MAX_JOBS_AT_INDUSTRY_L 500
 #define MAX_GOODS_AT_INDUSTRY_L 65000
@@ -296,6 +282,9 @@
 #define MIN_JOBS_AT_INDUSTRY_L (INDUSTRY_L_JOBS_LOAD_ORE\
 +INDUSTRY_L_JOBS_LOAD_STEEL+INDUSTRY_L_JOBS_USED)
 #define INDUSTRY_L_ANIM_SPEED 290
+#define INDUSTRY_L_POL_PER_GOOD 0.05
+#define INDUSTRY_L_POLLUTION    10
+
 
 #define MAX_ORE_AT_INDUSTRY_H 10000
 #define MAX_COAL_AT_INDUSTRY_H 1000
@@ -305,7 +294,6 @@
 
 #define DAYS_PER_POLLUTION      14
 #define POWERS_COAL_POLLUTION   20
-#define INDUSTRY_L_POLLUTION    10
 #define INDUSTRY_H_POLLUTION    10
 #define COALMINE_POLLUTION      3
 #define PORT_POLLUTION          1
@@ -458,6 +446,7 @@
 #define ROCKET_LAUNCH_GOOD      2
 #define ROCKET_LAUNCH_EVAC      3
 
+#define TIP_DEGRADE_TIME 200 * NUMOF_DAYS_IN_YEAR
 
 #define MAX_WASTE_AT_RECYCLE 20000
 #define BURN_WASTE_AT_RECYCLE (MAX_WASTE_AT_RECYCLE/200)
@@ -520,6 +509,7 @@
 #define NUMOF_COAL_RESERVES 100
 #define COAL_RESERVE_SIZE 10000
 #define ORE_RESERVE       1000
+#define MIN_ORE_RESERVE_FOR_MINE (ORE_RESERVE)
 #define MAX_COAL_AT_MINE 100000
 #define MAX_ORE_AT_MINE 100000
 /* COAL_RESERVE_SEARCH_LEN acts in both directions, so 5 is 10*10 */
@@ -579,13 +569,6 @@
 #define MAX_STEEL_IN_MARKET (MAX_STEEL_ON_RAIL*2)
 #define MARKET_STEEL_SEARCH_TRIGGER (MAX_STEEL_IN_MARKET/5)
 
-#if defined (commentout)
-#define MAIN_WIN_W 448
-#define MAIN_WIN_X (640-MAIN_WIN_W-8)
-#define MAIN_WIN_Y 8
-#define MAIN_WIN_H 400
-#endif
-
 #define SUST_ORE_COAL_COL 34
 #define SUST_PORT_COL     white(24)
 #define SUST_MONEY_COL    green(26)
@@ -634,14 +617,6 @@
 //#define MARKET_CB_W (18*8)
 #define MARKET_CB_W (17*8 - 2)
 #define MARKET_CB_H (23*8)
-
-#if defined (commentout)
-#define SELECT_BUTTON_WIN_X 1
-#define SELECT_BUTTON_WIN_W 56
-#define SELECT_BUTTON_WIN_Y 1
-#define SELECT_BUTTON_WIN_H 392
-#endif
-#define NUMOF_SELECT_BUTTONS_DOWN 16
 
 #define SCROLL_LONG_COUNT 5
 #define SCROLL_RIGHT_BUTTON_X 100
@@ -1143,7 +1118,7 @@ struct update_scoreboard_struct
   int monthly;
   int yearly_1;
   int yearly_2;
-  
+  long int message_area;
 };
 typedef struct update_scoreboard_struct Update_Scoreboard;
 
@@ -1175,7 +1150,6 @@ extern void start_image_text (void);
 extern void si_scroll_text (void);
 extern char si_next_char (FILE *);
 extern void get_real_time (void);
-//extern void time_for_year (void);
 extern void debug_writeval (int);
 extern int cheat (void);
 extern void print_cheat (void);
@@ -1184,7 +1158,6 @@ extern void order_select_buttons (void);
 extern void lincityrc (void);
 extern void check_for_old_save_dir (void);
 extern int count_groups (int);
-/* extern void count_all_groups (void); */
 extern int compile_results (void);
 extern void print_results (void);
 extern void mail_results (void);
@@ -1192,9 +1165,6 @@ extern void window_results (void);
 extern void init_path_strings (void);
 extern void lc_usleep (unsigned long);
 extern void dump_tcore (void);
-#ifdef MP_SANITY_CHECK
-extern void sanity_check (void);
-#endif
 #ifndef LC_X11
 extern void parse_args (int, char **);
 #endif
@@ -1204,12 +1174,6 @@ extern void check_endian (void);
 extern void eswap32 (int *);
 extern void eswap16 (unsigned short *);
 extern void malloc_failure (void);
-
-/*
-  clistubs
-  ********
-*/
-extern int do_time_step (void);
 
 /*
   fileutil
@@ -1267,13 +1231,10 @@ extern int select_water_type (int, int, int, int);
 extern int select_track_type (int, int, int, int);
 extern int select_rail_type (int, int, int, int);
 extern int select_road_type (int, int, int, int);
-extern void screen_setup (void);
 extern void update_select_buttons (void);
 extern void draw_main_window_box (int);
 extern void draw_select_button_graphic (int, char *);
 extern void setcustompalette (void);
-extern void refresh_main_screen (void);
-extern void update_main_screen (void);
 extern void clip_main_window (void);
 extern void unclip_main_window (void);
 extern void initfont (void);

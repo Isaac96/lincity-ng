@@ -6,17 +6,17 @@
 #include "lcconfig.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include "lcstring.h"
 #include "common.h"
 #include "lctypes.h"
 #include "lin-city.h"
 #include "mouse.h"
 #include "engglobs.h"
-#include "clistubs.h"
 #include "engine.h"
 #include "screen.h"
-#include "climsg.h"
-
+#include "lcintl.h"
+#include "fileutil.h"
 
 unsigned char mouse_pointer[] = {
     255, 255, 255, 255, 1, 1, 1, 1,
@@ -30,6 +30,7 @@ unsigned char mouse_pointer[] = {
 };
 unsigned char under_mouse_pointer[8 * 8];
 
+static int vga_mode = -1;
 
 void lc_mouse_handler(int button, int dx, int dy, int dz,
 		      int drx, int dry, int drz);
@@ -97,8 +98,56 @@ mouse_setup(void)
     cs_mouse_button = 0;
     cs_mouse_xmax = 640 - 1;
     cs_mouse_ymax = 480 - 1;
+
+    /* GCS -- This is meant to fix the upper left cursor problem,
+     *        but doesnt.  May 11, 2003 				*/
+    mox = 1; moy = 1;
     Fgl_getbox(mox, moy, 8, 8, under_mouse_pointer);
+
     mouse_seteventhandler(lc_mouse_handler);
+}
+
+void
+mouse_set_range (int width, int height)
+{
+    debug_printf ("setting mouse range: %d %d\n", width, height);
+    mouse_setxrange(0, width - 1);
+    mouse_setyrange(0, height - 1);
+    cs_mouse_xmax = width - 1;
+    cs_mouse_ymax = height - 1;
+}
+
+void
+set_vga_mode (void)
+{
+  /* If vga_mode is not set by command line, use vga_getdefaultmode() 
+     to get mode.  Supported modes are 10, 11, 12 or 13.
+   */
+  if (vga_mode == -1) {
+    vga_mode = vga_getdefaultmode();
+    if (vga_mode > 13 || vga_mode < 10)
+      vga_mode = 10;
+  }
+  vga_setmode (vga_mode);
+  gl_setcontextvga (vga_mode);
+  init_mouse();
+  switch (vga_mode) 
+    {
+    case 10:
+      resize_geometry (640,480);
+      break;
+    case 11:
+      resize_geometry (800,600);
+      break;
+    case 12:
+      resize_geometry (1024,768);
+      break;
+    case 13:
+      resize_geometry (1280,1024);
+      break;
+    default:
+      do_error ("illegal vga mode");
+    }
 }
 
 void
@@ -159,11 +208,16 @@ parse_args (int argc, char **argv)
   int option;
   extern char *optarg;
 
-  while ((option = getopt (argc, argv, "wR:G:B:")) != EOF)
+  /* GCS FIX:  Need to print usage and exit when illegal option spec'd */
+  while ((option = getopt (argc, argv, "wR:G:B:m:")) != EOF)
     {
       switch (option)
 	{
-
+	case 'm':
+	  sscanf (optarg, "%d", &vga_mode);
+	  if (vga_mode > 13 || vga_mode < 10)
+	    vga_mode = -1;
+	  break;
 	case 'w':
 	  gamma_correct_red = GAMMA_CORRECT_RED;
 	  gamma_correct_green = GAMMA_CORRECT_GREEN;
@@ -186,11 +240,65 @@ void
 HandleError (char *description, int degree)
 {
   fprintf (stderr,
-	   "An error has occurred.  The description is below...\n");
+	   _("An error has occurred.  The description is below...\n"));
   fprintf (stderr, "%s\n", description);
 
   if (degree == FATAL) {
-      fprintf (stderr, "Program aborting...\n");
+      fprintf (stderr, _("Program aborting...\n"));
       exit (-1);
     }
+}
+
+void
+init_mouse (void)
+{
+    mouse_setup ();
+}
+
+void
+setcustompalette (void)
+{
+    char s[100];
+    int i, n, r, g, b, flag[256];
+    FILE *inf;
+    Palette pal;
+    for (i = 0; i < 256; i++)
+	flag[i] = 0;
+    if ((inf = fopen (colour_pal_file, "r")) == 0)
+    {
+	printf ("The colour palette file <%s>... ", colour_pal_file);
+	do_error ("Can't find it.");
+    }
+    while (feof (inf) == 0)
+    {
+	fgets (s, 99, inf);
+	if (sscanf (s, "%d %d %d %d", &n, &r, &g, &b) == 4)
+	{
+	    pal.color[n].red = r;
+	    pal.color[n].green = g;
+	    pal.color[n].blue = b;
+	    flag[n] = 1;
+	}
+    }
+    fclose (inf);
+    for (i = 0; i < 256; i++)
+    {
+	if (flag[i] == 0)
+	{
+	    printf ("Colour %d not loaded\n", i);
+	    do_error ("Can't continue");
+	}
+	pal.color[i].red = (unsigned char) ((pal.color[i].red
+					     * (1 - gamma_correct_red)) + (64 * sin ((float) pal.color[i].red
+										     * M_PI / 128)) * gamma_correct_red);
+
+	pal.color[i].green = (unsigned char) ((pal.color[i].green
+					       * (1 - gamma_correct_green)) + (64 * sin ((float) pal.color[i].green
+											 * M_PI / 128)) * gamma_correct_green);
+
+	pal.color[i].blue = (unsigned char) ((pal.color[i].blue
+					      * (1 - gamma_correct_blue)) + (64 * sin ((float) pal.color[i].blue
+										       * M_PI / 128)) * gamma_correct_blue);
+    }
+    gl_setpalette (&pal);
 }

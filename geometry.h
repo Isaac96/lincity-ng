@@ -6,6 +6,8 @@
 #ifndef __geometry_h__
 #define __geometry_h__
 
+#include "lin-city.h"
+
 struct rect_struct
 {
     int x;
@@ -19,6 +21,11 @@ struct screen_geometry_struct
 {
     int border_x;
     int border_y;
+    int client_w;
+    int client_h;
+
+    /* Entire window */
+    Rect client_win;
 
     /* Main window */
     Rect main_win;
@@ -43,8 +50,8 @@ struct screen_geometry_struct
     Rect tover_button;
     Rect confine_button;
 
-    /* Icon palette (a.k.a. "select buttons") */
-    Rect select_buttons;
+    /* Icon palette (a.k.a. "module buttons") */
+    Rect module_buttons;
 
     /* Progress bars */
     Rect pbar_area;
@@ -65,13 +72,15 @@ struct screen_geometry_struct
     Rect select_message;
     Rect date;
     Rect time_for_year;
-    Rect status_message;
+    Rect status_message_1;
+    Rect status_message_2;
+    Rect money;
 
     /* Mini map */
     Rect mini_map;
     Rect mini_map_aux;
     Rect mini_map_area;    /* contains both mini_map and mini_map_aux */
-#if defined (commentout)
+#if defined (commentout)   /* GCS: keep these around for now */
     Rect ms_normal_button;
     Rect ms_pollution_button;
     Rect ms_fire_cover_button;
@@ -111,48 +120,19 @@ void draw_save (void);
 void draw_quit (void);
 void draw_help (void);
 void draw_results (void);
-#if defined (commentout)
-void draw_tover (int active);
-#if defined (LC_X11)
-void draw_confine (int active);
-#endif
-#endif
 void draw_select_button_graphic (int button, char *graphic);
 void select_fast (void);
 void select_medium (void);
 void select_slow (void);
 void select_pause (void);
-#if defined (commentout)
-void select_tover (void);
-#if defined (LC_X11)
-void select_confine (void);
-#endif
-#endif
-#ifdef commentout /* WCK: now in pbar.h */
-void init_pbar_text (void);
-void draw_pbar_pop (void);
-void draw_pbar_tech (void);
-void draw_pbar_food (void);
-void draw_pbar_jobs (void);
-void draw_pbar_money (void);
-void draw_pbar_coal (void);
-void draw_pbar_goods (void);
-void draw_pbar_ore (void);
-void draw_pbar_steel (void);
-void update_pbar_pop (int pop);
-void update_pbar_tech (int tech);
-void update_pbar_food (int food);
-void update_pbar_jobs (int jobs);
-void update_pbar_coal (int coal);
-void update_pbar_goods (int goods);
-void update_pbar_ore (int ore);
-void update_pbar_steel (int steel);
-void update_pbar_money (int money);
-void refresh_pbars (void);
-#endif /* commentout */
 void draw_ms_button (char* graphic);
 void draw_ms_text (char* txt);
 void draw_small_bezel (int x, int y, int w, int h, int colour);
+void draw_bezel (Rect r, short width, int color);
+
+/* Text width */
+#define CHAR_HEIGHT 8 
+#define CHAR_WIDTH 8
 
 /* Main window */
 #define MAIN_WIN_W 432
@@ -161,7 +141,7 @@ void draw_small_bezel (int x, int y, int w, int h, int colour);
 #define MAIN_WIN_H 400
 
 /* Speed buttons */
-#define SPEED_BUTTONS_X 0
+#define SPEED_BUTTONS_X 0 + MENU_BUTTON_W
 #define SPEED_BUTTONS_Y 416
 #define SPEED_BUTTONS_H 16
 #define SPEED_BUTTONS_W 32
@@ -182,10 +162,7 @@ void draw_small_bezel (int x, int y, int w, int h, int colour);
 #define FAST_BUTTON_H 16
 #define FAST_BUTTON_W 32
 
-#define HELP_BUTTON_X 608
-#define HELP_BUTTON_Y 448
-#define HELP_BUTTON_W 32
-#define HELP_BUTTON_H 32
+
 #define QUIT_BUTTON_X 608
 #define QUIT_BUTTON_Y 416
 #define QUIT_BUTTON_W 32
@@ -199,13 +176,10 @@ void draw_small_bezel (int x, int y, int w, int h, int colour);
 #define SAVE_BUTTON_W 32
 #define SAVE_BUTTON_H 32
 
+
 /* Misc buttons */
 #define MISC_BUTTONS_X 0
 #define MISC_BUTTONS_Y 400
-#define RESULTS_BUTTON_X MISC_BUTTONS_X
-#define RESULTS_BUTTON_Y MISC_BUTTONS_Y
-#define RESULTS_BUTTON_W 32
-#define RESULTS_BUTTON_H 16
 #define TOVER_BUTTON_X MISC_BUTTONS_X + 32
 #define TOVER_BUTTON_Y MISC_BUTTONS_Y
 #define TOVER_BUTTON_W 32
@@ -220,9 +194,33 @@ void draw_small_bezel (int x, int y, int w, int h, int colour);
 #define MENU_BUTTON_W 56
 #define MENU_BUTTON_H 24
 
+/* Stats button */
+#if defined(commentout)
+#define HELP_BUTTON_X 640 - 56
+#define HELP_BUTTON_Y 480 - 24
+#define HELP_BUTTON_W 56
+#define HELP_BUTTON_H 24
+
+#define RESULTS_BUTTON_X 640 - 2*56
+#define RESULTS_BUTTON_Y 480 - 24
+#define RESULTS_BUTTON_W 56
+#define RESULTS_BUTTON_H 24
+#else
+#define HELP_BUTTON_X 0
+#define HELP_BUTTON_Y 24
+#define HELP_BUTTON_W 56
+#define HELP_BUTTON_H 24
+
+#define RESULTS_BUTTON_X 0
+#define RESULTS_BUTTON_Y 48
+#define RESULTS_BUTTON_W 56
+#define RESULTS_BUTTON_H 24
+#endif
+
+
 #define SELECT_BUTTON_WIN_X 0
 #define SELECT_BUTTON_WIN_W 56
-#define SELECT_BUTTON_WIN_Y 24
+#define SELECT_BUTTON_WIN_Y 72
 #define SELECT_BUTTON_WIN_H 392
 #define SELECT_BUTTON_WIDTH 16
 #define SELECT_BUTTON_DISTANCE 8
@@ -264,15 +262,17 @@ void draw_small_bezel (int x, int y, int w, int h, int colour);
 #define PBAR_MONEY_Y    PBAR_POP_Y+(PBAR_H+1)*8
 #endif /* commentout */
 
-
-#define DATE_X                    100
-#define DATE_Y                    470
-#define TIME_FOR_YEAR_X           320
+#define STATUS_AREA_X             MAIN_WIN_X + SPEED_BUTTONS_W
+#define DATE_W                    112
+#define MONEY_W                   32 * CHAR_WIDTH
+#define TIME_FOR_YEAR_X           STATUS_AREA_X
 #define TIME_FOR_YEAR_Y           470
-#define SELECT_BUTTON_MESSAGE_X   100
+#define SELECT_BUTTON_MESSAGE_X   STATUS_AREA_X
 #define SELECT_BUTTON_MESSAGE_Y   460
-#define STATUS_MESSAGE_X          100
-#define STATUS_MESSAGE_Y          450
+#define STATUS_MESSAGE_1_X        STATUS_AREA_X
+#define STATUS_MESSAGE_1_Y        440
+#define STATUS_MESSAGE_2_X        STATUS_AREA_X
+#define STATUS_MESSAGE_2_Y        450
 
 #define SUST_SCREEN_X 96
 #define SUST_SCREEN_Y 416
@@ -286,21 +286,24 @@ void draw_small_bezel (int x, int y, int w, int h, int colour);
 #undef MAPPOINT_STATS_Y
 #undef MAPPOINT_STATS_W
 #endif
-#define MAPPOINT_STATS_X PBAR_AREA_X + 4
-#define MAPPOINT_STATS_Y PBAR_AREA_Y + PBAR_AREA_H + 4
-#define MAPPOINT_STATS_W PBAR_AREA_W - 8
-#define MAPPOINT_STATS_H (11*8)
+#define MAPPOINT_STATS_LINES 14
+#define MAPPOINT_STATS_X (PBAR_AREA_X + 4)
+#define MAPPOINT_STATS_Y (PBAR_AREA_Y + PBAR_AREA_H + 4)
+#define MAPPOINT_STATS_W (PBAR_AREA_W - 8)
+#define MAPPOINT_STATS_H (MAPPOINT_STATS_LINES*8)
+
+
+
+#define MINI_MAP_AUX_X PBAR_AREA_X + 4
+#define MINI_MAP_AUX_Y MAPPOINT_STATS_Y + MAPPOINT_STATS_H + 8
+#define MINI_MAP_AUX_W PBAR_AREA_W - 8
+#define MINI_MAP_AUX_H 16
 
 #define MONTHGRAPH_X PBAR_AREA_X + 4
-#define MONTHGRAPH_Y MAPPOINT_STATS_Y + MAPPOINT_STATS_H + 8
+#define MONTHGRAPH_Y MINI_MAP_AREA_Y + MINI_MAP_AREA_H + 8
 /* MONTHGRAPH_W must match MAPPOINT_STATS_W as used in shrglobs.c */
 #define MONTHGRAPH_W PBAR_AREA_W - 8
 #define MONTHGRAPH_H 64
-
-#define MINI_MAP_AUX_X PBAR_AREA_X + 4
-#define MINI_MAP_AUX_Y MONTHGRAPH_Y + MONTHGRAPH_H + 8
-#define MINI_MAP_AUX_W PBAR_AREA_W - 8
-#define MINI_MAP_AUX_H 16
 
 #define MINI_SCREEN_W WORLD_SIDE_LEN
 #define MINI_SCREEN_H WORLD_SIDE_LEN
