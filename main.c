@@ -8,18 +8,20 @@
 #include <stdlib.h>
 #include <signal.h>
 #include "lcstring.h"
+#include "cliglobs.h"
 #include "lchelp.h"
+#include "dialbox.h"
 
 /* this is for OS/2 - RVI */
 #ifdef __EMX__
 #include <sys/select.h>
 #include <X11/Xlibint.h>      /* required for __XOS2RedirRoot */
 #define chown(x,y,z)
-#define OS2_DEFAULT_LIBDIR "/XFree86/lib/X11/lincity"
+/* #define OS2_DEFAULT_LIBDIR "/XFree86/lib/X11/lincity" */
+/* This was moved to fileutil.c */
 #endif
 
 #include <sys/types.h>
-#include <sys/stat.h>
 #include <fcntl.h>
 
 #if defined (WIN32)
@@ -31,11 +33,6 @@
 
 #include <time.h>
 
-#if defined (HAVE_POPEN)
-FILE *popen(const char *command, const char *type);
-int pclose(FILE *stream);
-#endif
-
 #include <ctype.h>
 #include "common.h"
 #ifdef LC_X11
@@ -46,19 +43,20 @@ int pclose(FILE *stream);
 #include "lin-city.h"
 #include "cliglobs.h"
 #include "engglobs.h"
-#include "animate.h"
 #include "timer.h"
-#include "clistubs.h"
 #include "ldsvgui.h"
 #include "simulate.h"
 #include "mouse.h"
 #include "pixmap.h"
 #include "screen.h"
 #include "lcintl.h"
+#include "engine.h"
+#include "module_buttons.h"
+#include "fileutil.h"
 
 #if defined (WIN32) && !defined (NDEBUG)
 #define START_FAST_SPEED 1
-#define SKIP_OPENING_SCENE 1
+//#define SKIP_OPENING_SCENE 1
 #endif
 
 #define SI_BLACK 252
@@ -81,16 +79,21 @@ int execute_timestep (void);
 /* ---------------------------------------------------------------------- *
  * Private Global Variables
  * ---------------------------------------------------------------------- */
+#if defined (commentout)          /* Moved to fileutil.c */
 #if defined (WIN32)
 char LIBDIR[_MAX_PATH];
 #elif defined (__EMX__)
 #ifdef LIBDIR
 #undef LIBDIR   /* yes, I know I shouldn't ;-) */
 #endif
+/* GCS: Presumably I can do this, right? */
+#if defined (commentout)
 char LIBDIR[256];
 #endif
+char LIBDIR[LC_PATH_MAX];
+#endif
+#endif
 
-int make_dir_ok_flag;
 char *lc_save_dir;
 char *lc_temp_file;
 char save_names[10][42];
@@ -116,14 +119,32 @@ lincity_set_locale (void)
 {
     char* locale = NULL;
     char* localem = NULL;
-    char* dm = NULL;
-    char* td = NULL;
-#if defined (ENABLE_NLS)
-    locale = setlocale (LC_ALL, "");
-    localem = setlocale (LC_MESSAGES, NULL);
-    dm = bindtextdomain (PACKAGE, LOCALEDIR);
-    td = textdomain (PACKAGE);
+#if defined (WIN32)
+#define MAX_LANG_BUF 1024
+    char* language = NULL;
+    char language_buf[MAX_LANG_BUF];
 #endif
+
+#if defined (ENABLE_NLS)
+#if defined (WIN32)
+    /* Some special stoopid way of setting locale for microsoft gettext */
+    language = getenv ("LANGUAGE");
+    if (language) {
+	debug_printf ("Environment variable LANGUAGE is %s\n", language);
+	snprintf (language_buf, MAX_LANG_BUF, "LANGUAGE=%s", language);
+	gettext_putenv(language_buf);
+    } else {
+	debug_printf ("Environment variable LANGUAGE not set.\n");
+    }
+#else
+    locale = setlocale (LC_ALL, "");
+    debug_printf ("Setting entire locale to %s\n", locale);
+    locale = setlocale (LC_MESSAGES, "");
+    debug_printf ("Setting messages locale to %s\n", locale);
+    localem = setlocale (LC_MESSAGES, NULL);
+    debug_printf ("Query locale is %s\n", localem);
+#endif
+#endif /* ENABLE_NLS */
     return;
 }
 
@@ -136,9 +157,6 @@ lincity_main (int argc, char *argv[])
 
 #if defined (SVGALIB)
     int q;
-#if defined (commentout)
-    vga_setmousesupport (1);
-#endif
     vga_init ();
 #endif
 
@@ -147,15 +165,21 @@ lincity_main (int argc, char *argv[])
 #endif
 
     /* Initialize some global variables */
-    make_dir_ok_flag = 1;
+    //make_dir_ok_flag = 1;
     main_screen_originx = 1;
     main_screen_originy = 1;
     given_scene[0] = 0;
     quit_flag = network_flag = load_flag = save_flag 
 	    = prefs_flag = cheat_flag = monument_bul_flag
-	    = river_bul_flag = no_init_help = 0;
+	    = river_bul_flag = shanty_bul_flag;
     prefs_drawn_flag = 0;
     kmouse_val = 8;
+
+#ifdef LC_X11
+    borderx = 0;
+    bordery = 0;
+    parse_xargs (argc, argv, &geometry);
+#endif
 
     /* I18n */
     lincity_set_locale ();
@@ -163,14 +187,14 @@ lincity_main (int argc, char *argv[])
     /* Set up the paths to certain files and directories */
     init_path_strings ();
 
-    /* Initialize animation variables */
-    init_animation ();
-
     /* Make sure that things are installed where they should be */
     verify_package ();
 
     /* Make sure the save directory exists */
     check_savedir ();
+
+    /* Load preferences */
+    load_lincityrc ();
 
 #ifndef CS_PROFILE
 #ifdef SEED_RAND
@@ -178,20 +202,12 @@ lincity_main (int argc, char *argv[])
 #endif
 #endif
 
-    /* GCS: SVGALIB mouse now initialized using libvga.config file. */
-#if defined (commentout)
-#if defined (SVGALIB)
-    /* Read .Lincityrc to find out what kind of mouse the user has */
-    lincityrc ();
-#endif
-#endif
-
-    order_select_buttons ();
-
 #ifdef LC_X11
-    borderx = BORDERX;
-    bordery = BORDERY;
+#if defined (commentout)
+    borderx = 0;
+    bordery = 0;
     parse_xargs (argc, argv, &geometry);
+#endif
     Create_Window (geometry);
     pirate_cursor = XCreateFontCursor (display.dpy, XC_pirate);
 #elif defined (WIN32)
@@ -209,9 +225,12 @@ lincity_main (int argc, char *argv[])
 
     init_fonts ();
 
-#if !defined (SKIP_OPENING_SCENE)
-    load_start_image ();
+#if defined (SKIP_OPENING_SCENE)
+    skip_splash_screen = 1;
 #endif
+    if (!skip_splash_screen) {
+	load_start_image ();
+    }
 
 #ifdef LC_X11
     unlock_window_size ();
@@ -221,7 +240,14 @@ lincity_main (int argc, char *argv[])
     Fgl_setfontcolors (TEXT_BG_COLOUR, TEXT_FG_COLOUR);
 
     initialize_geometry (&scr);
+
+#if defined (SVGALIB)
+    set_vga_mode ();
+#endif
+
     initialize_monthgraph ();
+    init_mouse_registry ();
+    init_mini_map_mouse ();
 
 #ifdef LC_X11
     x_key_value = 0;
@@ -231,10 +257,8 @@ lincity_main (int argc, char *argv[])
     setcustompalette ();
     draw_background ();
     prog_box (_("Loading the game"), 1);
-#if defined (SVGALIB)
-    mouse_setup ();
-#endif
     init_types ();
+    init_modules();
     init_mappoint_array ();
     initialize_tax_rates ();
     prog_box ("", 95);
@@ -246,14 +270,14 @@ lincity_main (int argc, char *argv[])
     init_pixmaps ();
     prog_box ("", 100);
 #endif
-    draw_normal_mouse (1, 1);
-    screen_setup ();
-    /*    draw_sustainable_window (); */
-
-#ifdef LC_X11 /* WCK */
-    init_full_mouse ();
+    //draw_normal_mouse (1, 1);
+#if defined (LC_X11)
+    init_x_mouse ();
 #endif
+    init_timer_buttons();
     mouse_initialized = 1;
+    //set_selected_module (CST_TRACK_LR);
+    screen_setup ();
 
     /* Main loop! */
     client_main_loop ();
@@ -284,20 +308,25 @@ client_main_loop (void)
 
     /* Set up the game */
     reset_start_time ();
-    draw_mini_screen ();
+
+    update_avail_modules (0);
+
+    screen_full_refresh ();
+
     if (no_init_help == 0) {
 	block_help_exit = 1;
 	help_flag = 1;
-	if (make_dir_ok_flag)
+#if defined (commentout)
+	if (make_dir_ok_flag) {
 	    activate_help ("ask-dir.hlp");
-	else
+	    make_dir_ok_flag = 0;
+	} else {
 	    activate_help ("opening.hlp");
+	}
+#endif
+	activate_help ("opening.hlp");
     }
-    selected_type = CST_TRACK_LR;
-    selected_type_cost = GROUP_TRACK_COST;
-    old_selected_button = sbut[7];
-    highlight_select_button (sbut[7]);	/* 7 is track.  Watch out though! */
-    refresh_main_screen ();
+
     /* Set speed */
 #if defined (CS_PROFILE) || defined (START_FAST_SPEED)
     select_fast ();
@@ -323,8 +352,11 @@ client_main_loop (void)
 	mouse_update ();
 	key = vga_getkey ();
 #endif
-	if (key != 0) // nothing happened if key == 0 XXX: right?
+	/* nothing happened if key == 0 XXX: right? */
+	/* GCS: I'm not sure */
+	if (key != 0) {
             process_keystrokes (key);
+	}
 	/* Simulate the timestep */
 	quit = execute_timestep ();
     } while (quit == 0);
@@ -333,11 +365,16 @@ client_main_loop (void)
 void
 process_keystrokes (int key)
 {
+
+#if defined (commentout)	/* KBR 10/14/2002 - Cleanup MSVC warning */
+    int retval;
+#endif
+
     switch (key)
     {
     case 0: printf("dead!"); return;
     case ' ':   /* Space */
-    case 10:    /* ??    */
+    case 10:    /* Linefeed/Return */
     case 13:    /* Enter */
     case 127:   /* Backspace */
 	if (key == 127) {
@@ -437,17 +474,13 @@ process_keystrokes (int key)
 	break;
 #endif
 
+    case 'P':
     case 'p':
-#ifndef commentout /* GCS FIX -- new geometry code */ /* wck: huh? */
 	select_pause ();
-#endif
-#ifdef LC_X11
-	x_key_value = 0;
-#endif
 	break;
 
 #ifdef DEBUG_KEYS
-    case 'o':
+    case 'e':
 	if (cheat () != 0)
 	    people_pool += 100;
 	break;
@@ -472,20 +505,21 @@ process_keystrokes (int key)
 	break;
 
     case 'm':
-	if (cheat () != 0) {
-	    total_money += 1000000;
-	    print_total_money ();
-	}
+	if (cheat () != 0) 
+	    adjust_money(1000000);
+	break;
 #endif
 
     case 'f':
 	do_random_fire (-1, -1, 1);
 	break;
 
+    case 'L':
     case 'l':
 	load_flag = 1;
 	break;
 
+    case 'H':
     case 'h':
 	activate_help ("index.hlp");
 	break;
@@ -493,21 +527,34 @@ process_keystrokes (int key)
 	/* Escape Key */
 #ifdef LC_X11
     case 27:
-      if (help_flag) // exit help
-	draw_help_page("return-2"); // XXX: gotta love passing arg as a string!
-      else
-	activate_help ("menu.hlp");
-	break;
 #else
     case 5:
-      if (help_flag) 
-	draw_help_page("return-2"); 
-      else
-	activate_help ("menu.hlp");
-	break;
 #endif
+	if (help_flag) {
+	    /* exit help */
+	    draw_help_page("return-2"); 
+	} else if (prefs_flag) {
+	    close_prefs_screen();
+	    refresh_main_screen ();
+	} else {
+	    activate_help ("menu.hlp");
+	}
+	break;
+
+    case 'S':
     case 's':
 	save_flag = 1;
+	break;
+
+    case 'v':
+    case 'V':
+	/* Toggle overlay */
+	rotate_main_screen();
+	break;
+
+    case 'o':
+    case 'O':
+	prefs_flag = 1;
 	break;
 
     case 'r':
@@ -527,26 +574,17 @@ int
 execute_timestep (void)
 {
     static int next_time_step = 0;
-    int q = '0';
     int engine_updated = 0;
     int real_quit_flag = 0;
 
     if (market_cb_flag == 0 && help_flag == 0 
 	&& port_cb_flag == 0 && prefs_flag == 0)
     {
-	if ((--cs_mouse_button_delay) < 0)
-	    cs_mouse_button_delay = 0;
-#if defined (LC_X11) || defined (WIN32)
-	call_event ();
-#else
-	mouse_update ();
-#endif
 
 	if ((real_time < next_time_step || pause_flag || mt_flag)
 	    && save_flag == 0 && load_flag == 0)
 	{
-	    if ((let_one_through == 0 && q != 'l'
-		 && q != 's') || mt_flag)
+	    if ((let_one_through == 0) || mt_flag)
 	    {
 		lc_usleep (1);
 		return 0;
@@ -555,40 +593,31 @@ execute_timestep (void)
 		let_one_through = 0;
 	}
 
-	/* GCS FIX: -- This is still not quite right here.  I still need 
-	   to receive nw messages when the user hits "pause", etc. */
 	if (slow_flag)
 	    next_time_step = real_time + (SLOW_TIME_FOR_YEAR
 					  * 1000 / NUMOF_DAYS_IN_YEAR);
 	else if (fast_flag)
 	    next_time_step = real_time + (FAST_TIME_FOR_YEAR
 					  * 1000 / NUMOF_DAYS_IN_YEAR);
-	else
+	else if (med_flag)
 	    next_time_step = real_time + (MED_TIME_FOR_YEAR
 					  * 1000 / NUMOF_DAYS_IN_YEAR);
 
-	/* If nothing happens this time step (i.e. no server messages),
-	   then sleep() to give up timestep. */
-	engine_updated = do_time_step ();
-	if (!engine_updated) {
-	    lc_usleep (10);
-	    return 0;
-	}
+	do_time_step ();
 
 #ifdef CS_PROFILE
 	if (--prof_countdown <= 0)
 	    real_quit_flag = 1;
 #endif
 
-#ifdef MP_SANITY_CHECK
-	sanity_check ();
-#endif
-	update_main_screen ();
+	update_main_screen (0);
+
+	/* XXX: Shouldn't the rest be handled in update_main_screen()? */
+	/* GCS: No, I don't think so.  These remaining items are 
+		outside of the main screen */
 
 	print_stats ();
 
-	if (cs_mouse_button == LC_MOUSE_LEFTBUTTON)
-	    cs_mouse_repeat ();
 	if (market_cb_flag)
 	    draw_market_cb ();
 	else if (port_cb_flag)	/* else- can't have both */
@@ -596,23 +625,22 @@ execute_timestep (void)
     }
     else /* if game is "stalled" */
     {
-#if defined (LC_X11) || defined (WIN32)
 	if (market_cb_flag != 0 && market_cb_drawn_flag == 0)
 	    draw_market_cb ();
 	if (port_cb_flag != 0 && port_cb_drawn_flag == 0)
 	    draw_port_cb ();
-#endif
-	cs_mouse_button_delay = 0;
-#if !defined (LC_X11) && !defined (WIN32)
+#if defined (SVGALIB)
 	mouse_update ();
 #endif
     }
 
+#if defined (NETWORK_ENABLE)
     if (network_flag != 0) {
 	do_network_screen ();
 	network_flag = 0;
 	let_one_through = 1;	/* if we are paused we need */
     }			        /* this to redraw the screen */
+#endif
 
     if (prefs_flag != 0 && prefs_drawn_flag == 0) {
 	do_prefs_screen ();
@@ -643,14 +671,11 @@ execute_timestep (void)
 #if defined (WIN32)
 	DisableWindowsMenuItems ();
 #endif
-	if (help_flag != 0)	/*  mmm... could do this better */
-	    ;
-	/* this means we can't quit in help */
-
-	else if (yn_dial_box (_("Quit The Game?")
-			      ,_("If you want to save the game select NO")
-			      ,_("here, then click on the save button.")
-			      ,_("Do you really want to quit?")) != 0)
+	if (yn_dial_box (_("Quit The Game?")
+			 ,_("Do you really want to quit?")
+			 ,_("If you want to save the game select NO.")
+			 ,""     /* GCS: This can't be translated!. */
+			 ) != 0)
 	    real_quit_flag = 1;
 	else
 	    quit_flag = 0;
@@ -659,8 +684,10 @@ execute_timestep (void)
     if (help_flag != 0)
 	lc_usleep (1);
 
+#if defined (commentout)
     if (make_dir_ok_flag)
 	make_savedir ();	/* sorry a bit crude :( */
+#endif
     return real_quit_flag;
 }
 
@@ -681,89 +708,16 @@ cheat (void)
 {
     if (cheat_flag != 0)
 	return (1);
+    /* TRANSLATORS: Test mode is like using "cheat codes" */
     if (yn_dial_box (_("TEST"), _("You have pressed a test key"),
 		     _("You will only see this message once"),
 		     _("Do you really want to play in test mode..."))!= 0)
     {
-	print_cheat ();
 	cheat_flag = 1;
+	print_time_for_year(); /* Displays TEST MODE or not */
 	return (1);
     }
     return (0);
-}
-
-void
-print_cheat (void)
-{
-    Fgl_write (TESTM_X, TESTM_Y, _("TEST MODE!"));
-}
-
-void
-unprint_cheat (void)
-{
-    Fgl_fillbox (TESTM_X, TESTM_Y, 8 * 10, 8, TEXT_BG_COLOUR);
-}
-
-void
-lincityrc (void)
-{
-    char *s, *s1;
-    int i;
-    FILE *rc;
-
-    if ((s = (char *) malloc (lc_save_dir_len + 64)) == 0)
-	malloc_failure ();
-    if ((s1 = (char *) malloc (strlen (message_path) + 64)) == 0)
-	malloc_failure ();
-
-    strcpy (s, getenv("HOME"));
-    strcat (s, "/");
-    strcat (s, ".lincityrc");
-    if ((rc = fopen (s, "r")) == 0) {
-	do {
-	    strcpy (s1, "cat ");
-	    strcat (s1, message_path);
-	    strcat (s1, "mousetype.mes");
-	    system (s1);
-#ifdef LC_X11
-	    do
-	    {
-		call_event ();
-		i = x_key_value;
-	    }
-	    while (i == 0);
-	    x_key_value = 0;
-#else
-	    i = getchar ();
-#endif
-	}
-	while (i < '0' || i > '6');
-	if ((rc = fopen (s, "w")) == 0)
-	{
-	    printf (_("Can't open %s for writing, can't continue\n"), s);
-	    exit (1);
-	}
-	fprintf (rc, "mouse=%d\n", i - '0');
-	fclose (rc);
-#if !defined (WIN32)
-	chown (s, getuid (), getgid ());
-#endif
-	if ((rc = fopen (s, "r")) == 0) {
-	    printf (_("What!! can't open %s for reading after writing???\n"), s);
-	    exit (1);
-	}
-    }
-    while (feof (rc) == 0)
-    {
-	fgets (s, 99, rc);
-	if (sscanf (s, "mouse=%d", &i) != 0) {
-	    lc_mouse_type = i;
-            printf (_("Got mouse type: %d\n"),lc_mouse_type);
-        }
-    }
-    fclose (rc);
-    free (s1);
-    free (s);
 }
 
 int
@@ -788,7 +742,7 @@ compile_results (void)
     }
     if (cheat_flag)
 	fprintf (outf, _("----- IN TEST MODE -------\n"));
-    fprintf (outf, _("Results from LinCity Version %s\n"), VERSION);
+    fprintf (outf, _("Game statistics from LinCity Version %s\n"), VERSION);
     if (strlen (given_scene) > 3)
 	fprintf (outf, _("Initial loaded scene - %s\n"), given_scene);
     if (sustain_flag)
@@ -798,16 +752,22 @@ compile_results (void)
     fprintf (outf,
 	     _("Max population %d  Number evacuated %d Total births %d\n")
 	     ,max_pop_ever, total_evacuated, total_births);
-    fprintf (outf, _(" Date  %s %04d   Money %8d   Tech-level %5.1f (%5.1f)\n"),
+    fprintf (outf,
+	     _(" Date  %s %04d   Money %8d   Tech-level %5.1f (%5.1f)\n"),
 	     current_month(total_time), current_year(total_time), total_money,
 	     (float) tech_level * 100.0 / MAX_TECH_LEVEL,
 	     (float) highest_tech_level * 100.0 / MAX_TECH_LEVEL);
-    fprintf (outf, _(" Deaths by starvation %7d   History %8.3f\n")
-	     ,total_starve_deaths, starve_deaths_history);
-    fprintf (outf, _("Deaths from pollution %7d   History %8.3f\n")
-	     ,total_pollution_deaths, pollution_deaths_history);
-    fprintf (outf, _("Years of unemployment %7d   History %8.3f\n")
-	     ,total_unemployed_years, unemployed_history);
+    fprintf (outf,
+	     _(" Deaths by starvation %7d   History %8.3f\n"),
+	     total_starve_deaths, starve_deaths_history);
+    fprintf (outf,
+	     _("Deaths from pollution %7d   History %8.3f\n"),
+	     total_pollution_deaths, pollution_deaths_history);
+    fprintf (outf, _("Years of unemployment %7d   History %8.3f\n"),
+	     total_unemployed_years, unemployed_history);
+    fprintf (outf, _("Rockets launched %2d  Successful launches %2d\n"),
+	     rockets_launched, rockets_launched_success);
+    fprintf (outf, "\n");
     fprintf (outf, _("    Residences %4d         Markets %4d            Farms %4d\n"),
 	     group_count[GROUP_RESIDENCE_LL] + 
 	     group_count[GROUP_RESIDENCE_ML] + 
@@ -842,9 +802,9 @@ compile_results (void)
     fprintf (outf, _("    Light inds %4d      Heavy inds %4d        Recyclers %4d\n")
 	     ,group_count[GROUP_INDUSTRY_L], group_count[GROUP_INDUSTRY_H]
 	     ,group_count[GROUP_RECYCLE]);
-    fprintf (outf, _("Health centres %4d            Tips %4d         Shanties %4d\n")
-	     ,group_count[GROUP_HEALTH], group_count[GROUP_TIP]
-	     ,group_count[GROUP_SHANTY]);
+    fprintf (outf, _("Health centres %4d            Tips %4d         Shanties %4d\n"),
+	     group_count[GROUP_HEALTH], group_count[GROUP_TIP],
+	     group_count[GROUP_SHANTY]);
     fclose (outf);
     free (s);
     return (1);
@@ -898,5 +858,6 @@ window_results (void)
 			      + strlen (RESULTS_FILENAME) + 64)) == 0)
 	malloc_failure ();
     sprintf (s, "%s%c%s", lc_save_dir, PATH_SLASH, RESULTS_FILENAME);
-    ok_dial_box (s, RESULTS, _("Game statistics"));
+    ok_dial_box (s, RESULTS, 0L);
 }
+

@@ -14,12 +14,16 @@ short mappointoldtype[WORLD_SIDE_LEN][WORLD_SIDE_LEN];
 int lc_mouse_type;
 char progbox[(PROGBOXW + 16) * (PROGBOXH + 16)];
 
-int no_init_help;
+/* Preferences */
+int overwrite_transport_flag = 0;
+int suppress_popups = 0;
+int time_multiplex_stats = 0;
+int no_init_help = 0;
+int confine_flag = 0;	/* Only used for X11 */
+int skip_splash_screen = 0;
+int suppress_firsttime_module_help = 0;
 
-int select_button_type[NUMOF_SELECT_BUTTONS];
-char *select_button_graphic[NUMOF_SELECT_BUTTONS];
-int select_button_tflag[NUMOF_SELECT_BUTTONS];
-char select_button_help[NUMOF_SELECT_BUTTONS][20];
+int main_screen_flag = MAIN_SCREEN_NORMAL_FLAG;
 
 int mappoint_stats_flag = 0, mappoint_stats_time = 0;
 int mini_screen_flags = MINI_SCREEN_NORMAL_FLAG;
@@ -32,13 +36,13 @@ int mouse_initialized = 0;
 int cs_mouse_x, cs_mouse_y, cs_mouse_button;	/* current mouse status */
 int cs_mouse_shifted = 0;	/* shift key pressed with mouse. */
 int cs_mouse_xmax, cs_mouse_ymax, omx, omy, mox = 10, moy = 10;
-int cs_mouse_button_repeat, mouse_hide_count, cs_mouse_button_delay;
+
+int mouse_hide_count;
 #if defined (WIN32)
 /* int cs_current_mouse_x, cs_current_mouse_y, cs_current_mouse_button; */
 int cs_square_mouse_visible = 0;
 #endif
 int kmousex, kmousey, kmouse_val, reset_mouse_flag, mt_flag = 0;
-int overwrite_transport_flag = 0;
 
 char under_square_mouse_pointer_top[20 * 2 * 4];
 char under_square_mouse_pointer_left[18 * 2 * 4];
@@ -47,8 +51,6 @@ char under_square_mouse_pointer_bottom[20 * 2 * 4];
 int mouse_type = MOUSE_TYPE_NORMAL;
 
 int mt_start_posx, mt_start_posy, mt_current_posx, mt_current_posy;
-
-int screen_refresh_flag = 1;
 
 char *months[] =
 {N_("Jan"), N_("Feb"), N_("Mar"), N_("Apr"),
@@ -73,7 +75,6 @@ char *toveron_button1, *toveron_button2;
 char *toveroff_button1, *toveroff_button2;
 #ifdef LC_X11
 char *confine_button, *unconfine_button;
-int confine_flag = 0;
 #endif
 int pause_flag = 0, slow_flag = 0, med_flag = 0, fast_flag = 0;
 
@@ -108,7 +109,7 @@ char *quit_button_graphic, *load_button_graphic, *save_button_graphic;
 char *menu_button_graphic;
 int quit_flag, network_flag, load_flag, save_flag;
 int prefs_flag = 0, prefs_drawn_flag = 0;
-int monument_bul_flag, river_bul_flag;
+int monument_bul_flag, river_bul_flag, shanty_bul_flag;
 int must_release_button = 0, let_one_through = 0;
 
 int db_yesbox_x1, db_yesbox_x2, db_yesbox_y1, db_yesbox_y2;
@@ -118,15 +119,15 @@ char okmessage[22][74];
 int db_okbox_x1, db_okbox_x2, db_okbox_y1, db_okbox_y2, db_okflag, db_okbox_clicked;
 int suppress_ok_buttons;
 
+disp display;
+int borderx, bordery;
+
+int command_line_debug = 0;
 
 #ifdef LC_X11
 int winX, winY, mouse_button;
-/* unsigned int winW, winH; */  /* GCS: Moved to display structure */
-disp display;
 
 char *bg_color = NULL;
-char dummy1[1024];
-char dummy2[1024];
 int verbose = FALSE;		/* display settings if TRUE */
 int stay_in_front = FALSE;	/* Try to stay in clear area of the screen. */
 int text_bg = 0;
@@ -134,7 +135,6 @@ int text_fg = 255;
 int x_key_value;
 int x_key_shifted = 0;	/* Is the key shifted? */
 int xclip_x1, xclip_y1, xclip_x2, xclip_y2, clipping_flag = 0;
-int borderx, bordery;
 long unsigned int colour_table[256];
 unsigned char *open_font;
 int open_font_height, suppress_next_expose = 0;
@@ -148,7 +148,6 @@ char icon_pixmap_flag[NUM_OF_TYPES];
 
 #ifdef WIN32
 int mouse_button;
-disp display;
 char *bg_color = NULL;
 char dummy1[1024];
 char dummy2[1024];
@@ -159,7 +158,6 @@ int text_fg = 255;
 int x_key_value = 0;		/* GCS: Add initialization value */
 BOOL x_key_shifted = FALSE;	/* Is the key shifted? */
 int xclip_x1, xclip_y1, xclip_x2, xclip_y2, clipping_flag = 0;
-int borderx, bordery;
 long unsigned int colour_table[256];
 unsigned char *open_font;
 int open_font_height, suppress_next_expose = 0;

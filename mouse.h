@@ -10,18 +10,27 @@
 
 #define NUM_BUTTONS 3
 
-// Lin City mouse defines
 #define LC_MOUSE_LEFTBUTTON	1
 #define LC_MOUSE_MIDDLEBUTTON	2
 #define LC_MOUSE_RIGHTBUTTON	3
-#if defined (commentout)
-#define LC_MOUSE_LEFTBUTTON	0
-#define LC_MOUSE_MIDDLEBUTTON	1
-#define LC_MOUSE_RIGHTBUTTON	2
-#endif
 
+/* Mouse event flags */
 #define LC_MOUSE_RELEASE        0x10
 #define LC_MOUSE_PRESS          0x20
+
+/* Public interface variables and structures */
+
+/* Mouse registry stuff.  */
+
+struct mouse_handle_struct
+{
+    Rect * r;
+    void (* handler)(int, int, int);
+    struct mouse_handle_struct * prev;
+    struct mouse_handle_struct * next;
+};
+
+typedef struct mouse_handle_struct Mouse_Handle;
 
 /* 
 mappoint_[xy] are non-zero if the button was pressed inside the main window.
@@ -36,45 +45,58 @@ struct mouse_button_struct {
   int pressed;
 };
 
-void cs_mouse_handler (int enc_button, int dx, int dy);
+/* Public functions */
+
 void mouse_setup (void);
-void cs_mouse_repeat (void);
+void init_mouse_registry();
+int mouse_handle_click(int x, int y, int button); 
+
+Mouse_Handle * mouse_register(Rect * r, void (*handler)(int, int, int));
+void mouse_unregister(Mouse_Handle * mhandle);
+
+void cs_mouse_handler (int enc_button, int dx, int dy);
+
 void cs_mouse_handler (int, int, int);
 void move_mouse (int, int); 
 void do_mouse_main_win (int, int, int);
-int cmp(int, int);
+
 void drag_screen (void);
+
+/* Private functions */
+int cmp(int, int);
 
 /* WCK: These were in lin-city.h */
 
 void no_credit_build_msg (int selected_type);
-extern void hide_mouse (void);
-extern void redraw_mouse (void);
-extern void draw_square_mouse (int, int, int);
-extern void hide_square_mouse (void);
-extern void redraw_square_mouse (void);
-extern void draw_normal_mouse (int, int);
-extern void hide_normal_mouse (void);
-extern void redraw_normal_mouse (void);
-extern void do_mouse_select_buttons (int, int, int);
-extern void do_select_button (int, int);
-extern void highlight_select_button (int);
-extern void unhighlight_select_button (int);
-extern void do_mouse_other_buttons (int, int, int);
-extern void bulldoze_area (int, int);
-extern void fire_area (int, int);
-extern void do_market_cb_mouse (int, int);
-extern void do_port_cb_mouse (int, int);
-extern void do_db_mouse (int, int);
-extern void do_db_okmouse (int, int);
-extern void connect_rivers (void);
-extern int is_real_river (int, int);
-extern void select_pause (void);
-extern void select_fast (void);
-extern void select_medium (void);
-extern void select_slow (void);
-extern void choose_residence (void);
-extern void do_multi_transport (int, int, int);
-extern int mt_draw (int, int, int); /* wcoreyk */
+void hide_mouse (void);
+void redraw_mouse (void);
+void draw_square_mouse (int, int, int);
+void hide_square_mouse (void);
+void redraw_square_mouse (void);
+void draw_normal_mouse (int, int);
+void hide_normal_mouse (void);
+void redraw_normal_mouse (void);
+void do_mouse_select_buttons (int, int, int);
+void do_select_button (int, int);
+void highlight_select_button (int);
+void unhighlight_select_button (int);
+void do_mouse_other_buttons (int, int, int);
+void bulldoze_area (int, int);
+void fire_area (int, int);
+void do_market_cb_mouse (int, int);
+void do_port_cb_mouse (int, int);
+int is_real_river (int, int);
+void select_pause (void);
+void select_fast (void);
+void select_medium (void);
+void select_slow (void);
+void choose_residence (void);
+void do_multi_transport (int, int, int);
+int mt_draw (int, int, int); /* wcoreyk */
+void draw_module_cost (int grp);
+
+
+
 
 #endif
+
