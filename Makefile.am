@@ -12,7 +12,7 @@ noinst_HEADERS = \
 	climsg.h     clinet.h	 clistubs.h \
 	common.h     config.h	  confw32.h    \
 	engglobs.h   engine.h	 fileutil.h \
-	generic.h    geometry.h   \
+	generic.h    geometry.h  dialbox.h \
 	lcconfig.h   \
 	lchelp.h       \
 	lcintl.h     lcstring.h	lclib.h\
@@ -55,6 +55,7 @@ pkgdata_DATA = help/* icons/* messages/* messages/ca/* opening/* colour.pal
 ##     compiled picedit/xpicedit, and install these.
 ## 3)  I need to set the suid bit on lincity/picedit.
 ############################################################################
+
 install-exec-local:
 	$(mkinstalldirs) $(DESTDIR)$(pkgdatadir)
 	$(mkinstalldirs) $(DESTDIR)$(pkgdatadir)/help
@@ -63,7 +64,7 @@ install-exec-local:
 	$(mkinstalldirs) $(DESTDIR)$(pkgdatadir)/messages/ca
 	$(mkinstalldirs) $(DESTDIR)$(pkgdatadir)/opening
 	@list='$(EXTRA_PROGRAMS)'; for p in $$list; do \
-	  if test -f $$p && test ! -f $(DESTDIR)$(bindir)/`echo $$p|sed 's/$(EXEEXT)$$//'|sed '$(transform)'|sed 's/$$/$(EXEEXT)/'`; then \
+	  if test -f $$p; then \
 	    echo "  $(INSTALL_PROGRAM) $(INSTALL_STRIP_FLAG) $$p $(DESTDIR)$(bindir)/`echo $$p|sed 's/$(EXEEXT)$$//'|sed '$(transform)'|sed 's/$$/$(EXEEXT)/'`"; \
 	     $(INSTALL_PROGRAM) $(INSTALL_STRIP_FLAG) $$p $(DESTDIR)$(bindir)/`echo $$p|sed 's/$(EXEEXT)$$//'|sed '$(transform)'|sed 's/$$/$(EXEEXT)/'`; \
 	  else :; fi; \
@@ -119,7 +120,7 @@ bin_PROGRAMS = @PROGS@
 XLC_OBJ = \
 	x_ldsvgui.o x_splash.o x_lchelp.o x_main.o x_mouse.o \
 	x_cliglobs.o x_mps.o x_screen.o x_lcx11.o x_pixmap.o x_geometry.o \
-	x_pbar.o
+	x_pbar.o x_dialbox.o
 
 LC_OBJ = \
 	vga_ldsvgui.o vga_splash.o vga_lchelp.o vga_main.o vga_mouse.o \
@@ -215,7 +216,7 @@ vga_mps.o: mps.c mps.h lin-city.h lctypes.h
 	$(COMPILE) $(SVGA_DEFS) -o vga_mps.o -c mps.c
 
 vga_pbar.o: pbar.c pbar.h lin-city.h shrglobs.h lchelp.h cliglobs.h
-	$(COMPILE) $(SVGA_DEFS) -o x_pbar.o -c pbar.c
+	$(COMPILE) $(SVGA_DEFS) -o vga_pbar.o -c pbar.c
 
 vga_screen.o: screen.c screen.h lin-city.h lctypes.h
 	$(COMPILE) $(SVGA_DEFS) -o vga_screen.o -c screen.c
@@ -257,6 +258,9 @@ x_pbar.o: pbar.c pbar.h lin-city.h shrglobs.h lchelp.h cliglobs.h
 
 x_screen.o: screen.c screen.h lin-city.h lctypes.h lcx11.h
 	$(COMPILE) $(X_DEFS) -o x_screen.o -c screen.c
+
+x_dialbox.o: dialbox.c dialbox.h lcx11.h geometry.h
+	$(COMPILE) $(X_DEFS) -o x_dialbox.o -c dialbox.c
 
 
 ## ----------------- PICEDIT RULES ------------------

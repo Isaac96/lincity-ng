@@ -22,14 +22,15 @@ extern char help_path[256], message_path[256], given_scene[256];
 
 extern int no_init_help;
 extern short selected_type;	/* the type associated with button selected */
-extern int selected_button;		/* the button selected. So we can work out the cost */
+extern int selected_button;	/* the button selected. So we can work out the cost */
 extern int selected_type_cost;
-int select_button_type[NUMOF_SELECT_BUTTONS];
-char *select_button_graphic[NUMOF_SELECT_BUTTONS];
-int select_button_tflag[NUMOF_SELECT_BUTTONS];
-char select_button_help[NUMOF_SELECT_BUTTONS][20];
+extern int select_button_type[NUMOF_SELECT_BUTTONS];
+extern char *select_button_graphic[NUMOF_SELECT_BUTTONS];
+extern int select_button_tflag[NUMOF_SELECT_BUTTONS];
+extern char select_button_help[NUMOF_SELECT_BUTTONS][20];
 extern int select_button_help_flag[NUMOF_SELECT_BUTTONS];
 
+extern int main_screen_flag;
 extern int old_selected_button;
 extern int mappoint_stats_flag, mappoint_stats_time;
 extern int mini_screen_flags, mini_screen_time;
@@ -41,7 +42,12 @@ extern int mouse_initialized; /* wcoreyk */
 extern int cs_mouse_x, cs_mouse_y, cs_mouse_button;	/* current mouse status */
 extern int cs_mouse_shifted;	/* shift key pressed with mouse. */
 extern int cs_mouse_xmax, cs_mouse_ymax, omx, omy, mox, moy;
-extern int cs_mouse_button_repeat, mouse_hide_count, cs_mouse_button_delay;
+
+#ifdef MOUSE_REPEAT
+extern int cs_mouse_button_repeat, cs_mouse_button_delay;
+#endif
+
+extern int mouse_hide_count;
 #if defined (WIN32)
 /* extern int cs_current_mouse_x, cs_current_mouse_y, cs_current_mouse_button; */
 extern int cs_square_mouse_visible;

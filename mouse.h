@@ -38,12 +38,17 @@ struct mouse_button_struct {
 
 void cs_mouse_handler (int enc_button, int dx, int dy);
 void mouse_setup (void);
+
+#ifdef MOUSE_REPEAT
 void cs_mouse_repeat (void);
+#endif
+
 void cs_mouse_handler (int, int, int);
 void move_mouse (int, int); 
 void do_mouse_main_win (int, int, int);
 int cmp(int, int);
 void drag_screen (void);
+
 
 /* WCK: These were in lin-city.h */
 
@@ -67,7 +72,6 @@ extern void do_market_cb_mouse (int, int);
 extern void do_port_cb_mouse (int, int);
 extern void do_db_mouse (int, int);
 extern void do_db_okmouse (int, int);
-extern void connect_rivers (void);
 extern int is_real_river (int, int);
 extern void select_pause (void);
 extern void select_fast (void);
@@ -77,4 +81,30 @@ extern void choose_residence (void);
 extern void do_multi_transport (int, int, int);
 extern int mt_draw (int, int, int); /* wcoreyk */
 
+/* Mouse registry stuff.  */
+
+struct mouse_handle_struct
+{
+    Rect * r;
+    void (* handler)(int, int, int);
+    struct mouse_handle_struct * prev;
+    struct mouse_handle_struct * next;
+};
+
+typedef struct mouse_handle_struct Mouse_Handle;
+
+Mouse_Handle * mhandle_first;
+Mouse_Handle * mhandle_last;
+Mouse_Handle * mhandle_current;
+int mhandle_count;
+
+void init_mouse_registry();
+int mouse_handle_clicks(int x, int y, int button);
+
+Mouse_Handle * mouse_register(Rect * r, void (*handler)(int, int, int));
+void mouse_unregister(Mouse_Handle * mhandle);
+
+
+
 #endif
+

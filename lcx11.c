@@ -220,10 +220,10 @@ parse_xargs (int argc, char **argv, char **geometry)
     extern char *optarg;
 
 #ifdef ALLOW_PIX_DOUBLING
-    printf ("Options include Pix doubling\n");
-    while ((option = getopt (argc, argv, "vbndg:wR:G:B:")) != EOF)
+//    printf ("Options include Pix doubling\n");
+    while ((option = getopt (argc, argv, "vbrndg:wR:G:B:")) != EOF)
 #else
-	while ((option = getopt (argc, argv, "vbng:wR:G:B:")) != EOF)
+	while ((option = getopt (argc, argv, "vbrng:wR:G:B:")) != EOF)
 #endif
 	{
 	    switch (option)
@@ -242,6 +242,10 @@ parse_xargs (int argc, char **argv, char **geometry)
 	    case 'b':
 		borderx = 0;
 		bordery = 0;
+		break;
+	    case 'r':
+		borderx = BORDERX;
+		bordery = BORDERY;
 		break;
 	    case 'n':
 		no_init_help = TRUE;
@@ -554,12 +558,12 @@ Fgl_fillbox (int x1, int y1, int w, int h, int col)
 
 #ifdef ALLOW_PIX_DOUBLING
     if (pix_double)
-	XFillRectangle (display.dpy, display.win
-			,display.pixcolour_gc[col], x1 * 2, y1 * 2, w * 2, h * 2);
+	XFillRectangle (display.dpy, display.win,
+			display.pixcolour_gc[col], x1 * 2, y1 * 2, w * 2, h * 2);
     else
 #endif
-	XFillRectangle (display.dpy, display.win
-			,display.pixcolour_gc[col], x1 + borderx, y1 + bordery, w, h);
+	XFillRectangle (display.dpy, display.win,
+			display.pixcolour_gc[col], x1 + borderx, y1 + bordery, w, h);
 }
 
 #ifdef USE_IMAGES
@@ -611,7 +615,7 @@ Fgl_putbox_low (Drawable dst, int x0, int y0, int x1, int y1,
 		       0,		/* data */
 		       pmult * w, pmult * h,	/* width and height */
 		       32, 0);	/* bitmap_pad and bytes_per_line */
-
+    /* XXX: assert is not the right way to check for errors - wck */
     assert (im != 0);
     im->data = (char *) malloc (im->bytes_per_line * pmult * h);
     assert (im->data != 0);
@@ -687,6 +691,20 @@ Fgl_getbox (int x1, int y1, int w, int h, void *buf)
 	for (x = x1; x < x1 + w; x++)
 	    *(b++) = (unsigned char) Fgl_getpixel (x, y);
 }
+
+
+void
+Fgl_getrect(Rect * r, void * buffer)
+{
+    Fgl_getbox(r->x,r->y,r->w,r->h,buffer);
+}
+
+void 
+Fgl_putrect(Rect *r, void * buffer)
+{
+    Fgl_putbox(r->x,r->y,r->w,r->h,buffer);
+}
+
 
 void
 HandleEvent (XEvent * event)
@@ -974,6 +992,26 @@ init_full_mouse (void) /* added by WCK */
 		| ExposureMask | StructureNotifyMask | Button2MotionMask);
   /* This should be done better, only specifying Button2MotionMask when
      button 2 is pressed. */
+}
+
+void
+draw_border (void)
+{
+    int col = TEXT_BG_COLOUR & 0xff;
+    int pd = pix_double + 1;
+    if (borderx > 0) {
+	XFillRectangle (display.dpy, display.win, display.pixcolour_gc[col],
+			0, bordery, borderx, display.winH - 2*bordery);
+	XFillRectangle (display.dpy, display.win, display.pixcolour_gc[col],
+			display.winW - borderx, bordery,
+			borderx, display.winH - 2*bordery);
+    }
+    if (bordery > 0) {
+	XFillRectangle (display.dpy, display.win, display.pixcolour_gc[col],
+			0, 0, display.winW, bordery);
+	XFillRectangle (display.dpy, display.win, display.pixcolour_gc[col],
+			0, display.winH - bordery, display.winW, bordery);
+    }
 }
 
 #ifdef USE_PIXMAPS

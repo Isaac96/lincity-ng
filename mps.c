@@ -17,6 +17,7 @@
 #include "mouse.h"
 #include "screen.h"
 #include "power.h"
+#include "lcintl.h"
 
 /* ---------------------------------------------------------------------- *
  * Private Fn Prototypes
@@ -44,6 +45,8 @@ void mps_power_source_coal_setup (void);
 void mps_power_source_coal (int, int);
 void mps_power_source_setup (void);
 void mps_power_source (int, int);
+void mps_power_line_setup (void);
+void mps_power_line (int, int);
 void mps_university_setup (void);
 void mps_university (int, int);
 void mps_recycle_setup (void);
@@ -172,6 +175,9 @@ mappoint_stats (int x, int y, int button)
 	else
 	    switch (MP_GROUP(x,y))
 	    {
+	    case GROUP_POWER_LINE:
+	      mps_power_line_setup ();
+	      break;
 	    case GROUP_RESIDENCE_LL:
 	    case GROUP_RESIDENCE_ML:
 	    case GROUP_RESIDENCE_HL:
@@ -277,6 +283,9 @@ mappoint_stats (int x, int y, int button)
     } else {
 	switch (MP_GROUP(x,y))
 	{
+	case GROUP_POWER_LINE:
+            mps_power_line (x,y);
+	    break;
 	case GROUP_RESIDENCE_LL:
 	case GROUP_RESIDENCE_ML:
 	case GROUP_RESIDENCE_HL:
@@ -690,10 +699,14 @@ mps_indh (int x, int y)
   Rect* mps = &scr.mappoint_stats;
   char s[100];
   float f;
-  if ((MP_INFO(x,y).flags & FLAG_POWERED) != 0)
-    strcpy (s, "YES");
+  if ((MP_INFO(x,y).flags & FLAG_POWERED) != 0) 
+      if (MP_INFO(x,y).int_7 == 1) 
+	  strcpy(s, "COAL");
+      else
+	  strcpy (s, "YES ");
   else
-    strcpy (s, "NO ");
+    strcpy (s, "NO  ");
+
   Fgl_write (mps->x + 7 * 8, mps->y + 16, s);
   sprintf (s, "%7d", MP_INFO(x,y).int_1);
   Fgl_write (mps->x + 7 * 8, mps->y + 40, s);
@@ -780,6 +793,23 @@ mps_power_source_coal (int x, int y)
 
   sprintf (s, "%d", MP_INFO(x,y).int_1);
   Fgl_write (mps->x + 8 * 8, mps ->y + 80, s);
+}
+
+void
+mps_power_line_setup (void)
+{
+  Rect* mps = &scr.mappoint_stats;
+  Fgl_write (mps->x, mps->y + 40, "Debug");
+}
+
+void
+mps_power_line (int x, int y)
+{
+  Rect* mps = &scr.mappoint_stats;
+  char s[100];
+
+  sprintf (s, "%d",MP_INFO(x,y).int_5);
+  Fgl_write (mps->x + 8 * 8, mps->y + 40, s);
 }
 
 void
@@ -899,10 +929,11 @@ void
 mps_substation_setup (void)
 {
   Rect* mps = &scr.mappoint_stats;
-  Fgl_write (mps->x, mps->y + 40, "Grid");
-  Fgl_write (mps->x, mps->y + 48, "Max");
-  Fgl_write (mps->x, mps->y + 56, "Avail");
-  Fgl_write (mps->x, mps->y + 64, "Demand");
+  Fgl_write (mps->x, mps->y + 40, _("Grid"));
+  Fgl_write (mps->x, mps->y + 48, _("Max"));
+  Fgl_write (mps->x, mps->y + 56, _("Avail"));
+  Fgl_write (mps->x, mps->y + 64, _("Demand"));
+  Fgl_write (mps->x, mps->y + 72, _("Here"));
 }
 
 void
@@ -922,6 +953,10 @@ mps_substation (int x, int y)
 
   format_power (s, 100, grid[MP_INFO(x,y).int_6]->demand);
   Fgl_write (mps->x + 8 * 8, mps->y + 64, s);
+  
+  format_power (s, 100, MP_INFO(x,y).int_5);
+  Fgl_write (mps->x + 8 * 8, mps->y + 72, s);
+	       
 }
 
 void
@@ -973,6 +1008,7 @@ mps_windmill_setup (int x, int y)
     Fgl_write (mps->x, mps->y + 48, "Max");
     Fgl_write (mps->x, mps->y + 56, "Avail");
     Fgl_write (mps->x, mps->y + 64, "Demand");
+    Fgl_write (mps->x, mps->y + 72, "Here");
   }
 }
 
@@ -1002,6 +1038,10 @@ mps_windmill (int x, int y)
       
       format_power (s, 10, grid[MP_INFO(x,y).int_6]->demand);
       Fgl_write (mps->x + 8 * 8, mps->y + 64, s);
+
+      format_power (s, 10, MP_INFO(x,y).int_5);
+      Fgl_write (mps->x + 8 * 8, mps->y + 72, s);
+
     }
 }
 
@@ -1251,11 +1291,13 @@ void
 mps_right_setup (void)
 {
   Rect* mps = &scr.mappoint_stats;
-  Fgl_write (mps->x, mps->y + 8, "  Fire cover");
-  Fgl_write (mps->x, mps->y + 24, " Health cover");
-  Fgl_write (mps->x, mps->y + 40, "Cricket cover");
-  Fgl_write (mps->x, mps->y + 56, "  Pollution");
-  Fgl_write (mps->x, mps->y + 76, " Bull");
+  Fgl_write (mps->x + 16, mps->y + 8,  "Grid:");
+  Fgl_write (mps->x + 16, mps->y + 16, "Coverages:");
+  Fgl_write (mps->x + 16, mps->y + 24, "Fire     ");
+  Fgl_write (mps->x + 16, mps->y + 32, "Health   ");
+  Fgl_write (mps->x + 16, mps->y + 40, "Cricket  ");
+  Fgl_write (mps->x + 16, mps->y + 48, "Pollution");
+  Fgl_write (mps->x + 16, mps->y + 76, " Bull");
 }
 
 void
@@ -1264,18 +1306,15 @@ mps_right (int x, int y)
   Rect* mps = &scr.mappoint_stats;
   char s[100];
   int g;
-  if ((MP_INFO(x,y).flags & FLAG_FIRE_COVER) != 0)
-    Fgl_write (mps->x + 8 * 8, mps->y + 16, "YES");
-  else
-    Fgl_write (mps->x + 8 * 8, mps->y + 16, "NO ");
-  if ((MP_INFO(x,y).flags & FLAG_HEALTH_COVER) != 0)
-    Fgl_write (mps->x + 8 * 8, mps->y + 32, "YES");
-  else
-    Fgl_write (mps->x + 8 * 8, mps->y + 32, "NO ");
-  if ((MP_INFO(x,y).flags & FLAG_CRICKET_COVER) != 0)
-    Fgl_write (mps->x + 8 * 8, mps->y + 48, "YES");
-  else
-    Fgl_write (mps->x + 8 * 8, mps->y + 48, "NO ");
+  snprintf(s,100,"%d,%d",x,y);
+  Fgl_write (mps->x + 8 * 8, mps->y + 8, s);
+  Fgl_write (mps->x + 8 * 12, mps->y + 24, 
+	     (MP_INFO(x,y).flags & FLAG_FIRE_COVER) ? "YES" : "NO ");
+  Fgl_write (mps->x + 8 * 12, mps->y + 32, 
+	     (MP_INFO(x,y).flags & FLAG_HEALTH_COVER) ? "YES" : "NO ");
+  Fgl_write (mps->x + 8 * 12, mps->y + 40, 
+	     (MP_INFO(x,y).flags & FLAG_CRICKET_COVER) ? "YES" : "NO ");
+
   sprintf (s, "%5d ", MP_POL(x,y));
   if (MP_POL(x,y) < 10)
     strcat (s, "(clear) ");
@@ -1295,7 +1334,7 @@ mps_right (int x, int y)
     strcat (s, "(v bad) ");
   else
     strcat (s, "(death!)");
-  Fgl_write (mps->x + 8, mps->y + 64, s);
+  Fgl_write (mps->x + 8, mps->y + 56, s);
 
   g = MP_GROUP(x,y);
   if (g == 0)
@@ -1430,8 +1469,8 @@ mps_global_housing_setup (void)
     Fgl_write (mps->x + 4, mps->y + 1*8+6, "Pop");
     Fgl_write (mps->x + 4, mps->y + 2*8+6, "Housed");
     Fgl_write (mps->x + 4, mps->y + 3*8+6, "Housed %");
-    Fgl_write (mps->x + 4, mps->y + 4*8+6, "Residenc");
-    Fgl_write (mps->x + 4, mps->y + 5*8+6, "Shanties");
+    Fgl_write (mps->x + 4, mps->y + 4*8+6, "Shanties");
+
     Fgl_write (mps->x + 4, mps->y + 6*8+6, "Unn Dths");
     Fgl_write (mps->x + 4, mps->y + 7*8+6, "Unemp %");
     Fgl_write (mps->x + 4, mps->y + 8*8+6, "Starv %");
@@ -1503,10 +1542,9 @@ mps_global_housing (void)
         sprintf (s, " %3d.%1d", 0, 0);
     }
     Fgl_write (mps->x + offset, mps->y + 3*8+6, s);
-    sprintf (s, "    ??");
-    Fgl_write (mps->x + offset, mps->y + 4*8+6, s);
     sprintf (s, " %5d", numof_shanties);
-    Fgl_write (mps->x + offset, mps->y + 5*8+6, s);
+    Fgl_write (mps->x + offset, mps->y + 4*8+6, s);
+
     sprintf (s, " %5d", unnat_deaths);
     Fgl_write (mps->x + offset, mps->y + 6*8+6, s);
     i = ((tunemployed_population / NUMOF_DAYS_IN_MONTH) * 1000)

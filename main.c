@@ -189,8 +189,8 @@ lincity_main (int argc, char *argv[])
     order_select_buttons ();
 
 #ifdef LC_X11
-    borderx = BORDERX;
-    bordery = BORDERY;
+    borderx = 0;
+    bordery = 0;
     parse_xargs (argc, argv, &geometry);
     Create_Window (geometry);
     pirate_cursor = XCreateFontCursor (display.dpy, XC_pirate);
@@ -284,7 +284,16 @@ client_main_loop (void)
 
     /* Set up the game */
     reset_start_time ();
-    draw_mini_screen ();
+
+    //    draw_mini_screen ();
+    selected_type = CST_TRACK_LR;
+    selected_type_cost = GROUP_TRACK_COST;
+    old_selected_button = sbut[7];
+
+    update_select_buttons ();
+
+    screen_full_refresh ();
+
     if (no_init_help == 0) {
 	block_help_exit = 1;
 	help_flag = 1;
@@ -293,11 +302,9 @@ client_main_loop (void)
 	else
 	    activate_help ("opening.hlp");
     }
-    selected_type = CST_TRACK_LR;
-    selected_type_cost = GROUP_TRACK_COST;
-    old_selected_button = sbut[7];
-    highlight_select_button (sbut[7]);	/* 7 is track.  Watch out though! */
-    refresh_main_screen ();
+
+    //    highlight_select_button (sbut[7]);	/* 7 is track.  Watch out though! */
+    //    refresh_main_screen ();
     /* Set speed */
 #if defined (CS_PROFILE) || defined (START_FAST_SPEED)
     select_fast ();
@@ -323,8 +330,11 @@ client_main_loop (void)
 	mouse_update ();
 	key = vga_getkey ();
 #endif
-	if (key != 0) // nothing happened if key == 0 XXX: right?
+	/* nothing happened if key == 0 XXX: right? */
+	/* GCS: I'm not sure */
+	if (key != 0) {
             process_keystrokes (key);
+	}
 	/* Simulate the timestep */
 	quit = execute_timestep ();
     } while (quit == 0);
@@ -333,6 +343,9 @@ client_main_loop (void)
 void
 process_keystrokes (int key)
 {
+
+    int retval;
+
     switch (key)
     {
     case 0: printf("dead!"); return;
@@ -494,7 +507,7 @@ process_keystrokes (int key)
 #ifdef LC_X11
     case 27:
       if (help_flag) // exit help
-	draw_help_page("return-2"); // XXX: gotta love passing arg as a string!
+	draw_help_page("return-2"); 
       else
 	activate_help ("menu.hlp");
 	break;
@@ -509,6 +522,22 @@ process_keystrokes (int key)
     case 's':
 	save_flag = 1;
 	break;
+
+    case 'b': 
+	retval = dialog_box(red(10),10,
+		   0,0,"This is the first test",
+		   0,0,"Of the new dialog box code",
+		   0,0,"",
+		   0,0,"Do you like it?",
+		   1,'y',"Yes",
+		   1,'n',"No",
+		   1,'m',"Maybe",
+		   1,'k',"Kind of",
+		   1,'t',"Not at all",
+		   1,'s',"It is a flaming pile of excrement!"
+	    );
+	printf("dialog_box returned %c\n",retval);
+      break;
 
     case 'r':
         window_results();
@@ -534,8 +563,10 @@ execute_timestep (void)
     if (market_cb_flag == 0 && help_flag == 0 
 	&& port_cb_flag == 0 && prefs_flag == 0)
     {
+#ifdef MOUSE_REPEAT
 	if ((--cs_mouse_button_delay) < 0)
 	    cs_mouse_button_delay = 0;
+#endif
 #if defined (LC_X11) || defined (WIN32)
 	call_event ();
 #else
@@ -580,15 +611,14 @@ execute_timestep (void)
 	    real_quit_flag = 1;
 #endif
 
-#ifdef MP_SANITY_CHECK
-	sanity_check ();
-#endif
 	update_main_screen ();
 
 	print_stats ();
 
+#ifdef MOUSE_REPEAT
 	if (cs_mouse_button == LC_MOUSE_LEFTBUTTON)
 	    cs_mouse_repeat ();
+#endif
 	if (market_cb_flag)
 	    draw_market_cb ();
 	else if (port_cb_flag)	/* else- can't have both */
@@ -602,7 +632,9 @@ execute_timestep (void)
 	if (port_cb_flag != 0 && port_cb_drawn_flag == 0)
 	    draw_port_cb ();
 #endif
+#ifdef MOUSE_REPEAT
 	cs_mouse_button_delay = 0;
+#endif 
 #if !defined (LC_X11) && !defined (WIN32)
 	mouse_update ();
 #endif
@@ -685,23 +717,11 @@ cheat (void)
 		     _("You will only see this message once"),
 		     _("Do you really want to play in test mode..."))!= 0)
     {
-	print_cheat ();
 	cheat_flag = 1;
+	print_time_for_year(); /* Displays TEST MODE or not */
 	return (1);
     }
     return (0);
-}
-
-void
-print_cheat (void)
-{
-    Fgl_write (TESTM_X, TESTM_Y, _("TEST MODE!"));
-}
-
-void
-unprint_cheat (void)
-{
-    Fgl_fillbox (TESTM_X, TESTM_Y, 8 * 10, 8, TEXT_BG_COLOUR);
 }
 
 void
@@ -788,7 +808,7 @@ compile_results (void)
     }
     if (cheat_flag)
 	fprintf (outf, _("----- IN TEST MODE -------\n"));
-    fprintf (outf, _("Results from LinCity Version %s\n"), VERSION);
+    fprintf (outf, _("Game statistics from LinCity Version %s\n"), VERSION);
     if (strlen (given_scene) > 3)
 	fprintf (outf, _("Initial loaded scene - %s\n"), given_scene);
     if (sustain_flag)
@@ -798,16 +818,22 @@ compile_results (void)
     fprintf (outf,
 	     _("Max population %d  Number evacuated %d Total births %d\n")
 	     ,max_pop_ever, total_evacuated, total_births);
-    fprintf (outf, _(" Date  %s %04d   Money %8d   Tech-level %5.1f (%5.1f)\n"),
+    fprintf (outf,
+	     _(" Date  %s %04d   Money %8d   Tech-level %5.1f (%5.1f)\n"),
 	     current_month(total_time), current_year(total_time), total_money,
 	     (float) tech_level * 100.0 / MAX_TECH_LEVEL,
 	     (float) highest_tech_level * 100.0 / MAX_TECH_LEVEL);
-    fprintf (outf, _(" Deaths by starvation %7d   History %8.3f\n")
-	     ,total_starve_deaths, starve_deaths_history);
-    fprintf (outf, _("Deaths from pollution %7d   History %8.3f\n")
-	     ,total_pollution_deaths, pollution_deaths_history);
-    fprintf (outf, _("Years of unemployment %7d   History %8.3f\n")
-	     ,total_unemployed_years, unemployed_history);
+    fprintf (outf,
+	     _(" Deaths by starvation %7d   History %8.3f\n"),
+	     total_starve_deaths, starve_deaths_history);
+    fprintf (outf,
+	     _("Deaths from pollution %7d   History %8.3f\n"),
+	     total_pollution_deaths, pollution_deaths_history);
+    fprintf (outf, _("Years of unemployment %7d   History %8.3f\n"),
+	     total_unemployed_years, unemployed_history);
+    fprintf (outf, _("Rockets launched %2d  Successful launches %2d\n"),
+	     rockets_launched, rockets_launched_success);
+    fprintf (outf, "\n");
     fprintf (outf, _("    Residences %4d         Markets %4d            Farms %4d\n"),
 	     group_count[GROUP_RESIDENCE_LL] + 
 	     group_count[GROUP_RESIDENCE_ML] + 
@@ -842,9 +868,9 @@ compile_results (void)
     fprintf (outf, _("    Light inds %4d      Heavy inds %4d        Recyclers %4d\n")
 	     ,group_count[GROUP_INDUSTRY_L], group_count[GROUP_INDUSTRY_H]
 	     ,group_count[GROUP_RECYCLE]);
-    fprintf (outf, _("Health centres %4d            Tips %4d         Shanties %4d\n")
-	     ,group_count[GROUP_HEALTH], group_count[GROUP_TIP]
-	     ,group_count[GROUP_SHANTY]);
+    fprintf (outf, _("Health centres %4d            Tips %4d         Shanties %4d\n"),
+	     group_count[GROUP_HEALTH], group_count[GROUP_TIP],
+	     group_count[GROUP_SHANTY]);
     fclose (outf);
     free (s);
     return (1);
@@ -898,5 +924,6 @@ window_results (void)
 			      + strlen (RESULTS_FILENAME) + 64)) == 0)
 	malloc_failure ();
     sprintf (s, "%s%c%s", lc_save_dir, PATH_SLASH, RESULTS_FILENAME);
-    ok_dial_box (s, RESULTS, _("Game statistics"));
+    ok_dial_box (s, RESULTS, 0L);
 }
+

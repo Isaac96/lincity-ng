@@ -13,6 +13,7 @@
 #include "mouse.h"
 #include "engglobs.h"
 #include "clistubs.h"
+#include "cliglobs.h"
 #include "engine.h"
 #include "screen.h"
 #include "climsg.h"
@@ -21,7 +22,7 @@
 #include "lchelp.h"
 #include "pbar.h"
 
-#define DEBUG_MT_CODE 1
+#undef DEBUG_MT_CODE
 
 extern Update_Scoreboard update_scoreboard;
 
@@ -29,14 +30,18 @@ extern Update_Scoreboard update_scoreboard;
  * Private global variables
  * ---------------------------------------------------------------------- */
 static struct mouse_button_struct buttons[NUM_BUTTONS];
-static int mt_cost;
+/* XXX: mt_cost is misnamed; should represent number of sections, not price */
+static int mt_cost; 
 static int mt_grp;
 static char mt_name[20];
+static short mouse_buffer_fresh = 0;
 
 void check_bulldoze_area (int x, int y);
 
 
 /* GCS -- we should get rid of mouse repeat. */
+/* WCK -- agreed */
+#ifdef MOUSE_REPEAT
 void
 cs_mouse_repeat (void)
 {
@@ -45,6 +50,7 @@ cs_mouse_repeat (void)
 	cs_mouse_handler (cs_mouse_button, 0, 0);
     /* cs_mouse_button_repeat zeroed by handler */
 }
+#endif
 
 /* ---------------------------------------------------------------------- *
  * cs_mouse_handler
@@ -146,99 +152,101 @@ cs_mouse_handler (int enc_button, int dx, int dy)
 	   wheel, but I feel like I should invent it just once and see how
 	   well mine rolls. */
 
-	switch (button) {
-	case LC_MOUSE_LEFTBUTTON:
-	    cs_mouse_button_repeat = real_time + 500;
+	if (!mouse_handle_click(x, y, button)) {
+	    switch (button) {
+	    case LC_MOUSE_LEFTBUTTON:
+#ifdef MOUSE_REPEAT
+		cs_mouse_button_repeat = real_time + 500;
+#endif
 	
-	    if (market_cb_flag) {
-		do_market_cb_mouse (x, y);
-		break;
-	    }
-	    else if (port_cb_flag) {
-		do_port_cb_mouse (x, y);
-		break;
-	    }
-	    else if (help_flag) {
-		do_help_mouse (x, y, button);
-		break;
-	    }
-	    else if (prefs_flag) {
-		do_prefs_mouse (x, y, button);
-		break;
-	    }
-	    else if (db_flag) {
-		do_db_mouse (x, y);
-		break;
-	    }
-	    else if (db_okflag) {
-		do_db_okmouse (x, y);
-		break;
-	    }
-	    else if (load_flag || save_flag) 
-		return;
+		if (market_cb_flag) {
+		    do_market_cb_mouse (x, y);
+		    break;
+		}
+		else if (port_cb_flag) {
+		    do_port_cb_mouse (x, y);
+		    break;
+		}
+		else if (help_flag) {
+		    do_help_mouse (x, y, button);
+		    break;
+		}
+		else if (prefs_flag) {
+		    do_prefs_mouse (x, y, button);
+		    break;
+		}
+		else if (db_flag) {
+		    do_db_mouse (x, y);
+		    break;
+		}
+		else if (db_okflag) {
+		    do_db_okmouse (x, y);
+		    break;
+		}
+		else if (load_flag || save_flag) 
+		    return;
 
-	    /* This is the main screen */
-	    if (mouse_in_rect(&scr.main_win,x,y)) {
-		do_mouse_main_win(x, y, button);
-		refresh_main_screen ();
-		break;
-	    }
+		/* This is the main screen */
+		if (mouse_in_rect(&scr.main_win,x,y)) {
+		    do_mouse_main_win(x, y, button);
+		    refresh_main_screen ();
+		    break;
+		}
 
-	    /* Other points too */
-	    do_mouse_other_buttons(x, y, button);
+		/* Other points too */
+		do_mouse_other_buttons(x, y, button);
 	
-	    break;
+		break;
 	
-	case LC_MOUSE_RIGHTBUTTON:
-	case LC_MOUSE_MIDDLEBUTTON:
-	/* GCS FIX: This is my fix for right clicks on 
-	    main screen during yn_dialogs causing dialog to 
-	    be overwritten by screen content (similar effect
-	    for market_cb overwritten by mps).  This fix could
-	    be better, but will be better to confirm behavior
-	    for X version before deciding final fix.
-	    */
-	    if (market_cb_flag) {
-		// should dismiss cb?
-		break;
-	    }
-	    else if (port_cb_flag) {
-		// should dismiss cb?
-		break;
-	    }
-	    else if (help_flag) {
-		// do_help_mouse (x, y, button);   maybe should??
-		break;
-	    }
-	    else if (prefs_flag) {
-		break;
-	    }
-	    else if (db_flag) {
-		break;
-	    }
-	    else if (db_okflag) {
-		break;
-	    }
-	    else if (load_flag || save_flag) 
-		return;
+	    case LC_MOUSE_RIGHTBUTTON:
+	    case LC_MOUSE_MIDDLEBUTTON:
+		/* GCS FIX: This is my fix for right clicks on 
+		   main screen during yn_dialogs causing dialog to 
+		   be overwritten by screen content (similar effect
+		   for market_cb overwritten by mps).  This fix could
+		   be better, but will be better to confirm behavior
+		   for X version before deciding final fix.
+		*/
+		if (market_cb_flag) {
+		    // should dismiss cb?
+		    break;
+		}
+		else if (port_cb_flag) {
+		    // should dismiss cb?
+		    break;
+		}
+		else if (help_flag) {
+		    // do_help_mouse (x, y, button);   maybe should??
+		    break;
+		}
+		else if (prefs_flag) {
+		    break;
+		}
+		else if (db_flag) {
+		    break;
+		}
+		else if (db_okflag) {
+		    break;
+		}
+		else if (load_flag || save_flag) 
+		    return;
 
-	    /* This is the main screen */
-	    if (mouse_in_rect(&scr.main_win,x,y)) {
-		do_mouse_main_win(x, y, button);
-		refresh_main_screen ();
+		/* This is the main screen */
+		if (mouse_in_rect(&scr.main_win,x,y)) {
+		    do_mouse_main_win(x, y, button);
+		    refresh_main_screen ();
+		    break;
+		}
+
+		/* Other points too */
+		do_mouse_other_buttons(x, y, button);
+
 		break;
+
+	    default: 
+		printf("Unknown mouse button in cs_mouse_handler\n");
 	    }
-
-	    /* Other points too */
-	    do_mouse_other_buttons(x, y, button);
-
-	    break;
-
-	default: 
-	    printf("Unknown mouse button in cs_mouse_handler\n");
-	}
-
-	/* button release */
+	} /* mouse_handle_click couldn't. */
     } else if (button_released) { 
 	button = enc_button - 16; /* probably shouldn't use this temporarily */
       
@@ -261,7 +269,7 @@ cs_mouse_handler (int enc_button, int dx, int dy)
 #if defined (DEBUG_MT_CODE)
 	    printf("calling mt_draw(MT_SUCCESS)\n");
 #endif
-	    mt_draw(cs_mouse_x, cs_mouse_y, MT_SUCCESS);  
+	    mt_draw(cs_mouse_x, cs_mouse_y, MT_SUCCESS);
 	    break;
 	case LC_MOUSE_RIGHTBUTTON:
 	    break;
@@ -351,17 +359,20 @@ move_mouse (int x, int y)
 void
 hide_mouse (void)
 {
-    if (mouse_type == MOUSE_TYPE_SQUARE)
-	hide_square_mouse ();
-    else
-	hide_normal_mouse ();
     mouse_hide_count++;
+    if (mouse_hide_count == 1) {
+	if (mouse_type == MOUSE_TYPE_SQUARE)
+	    hide_square_mouse ();
+	else
+	    hide_normal_mouse ();
+    }
 }
 
 void
 redraw_mouse (void)
 {
-    if (--mouse_hide_count > 0)
+    mouse_hide_count--;
+    if (mouse_hide_count > 0)
 	return;
     mouse_hide_count = 0;
     if (mouse_type == MOUSE_TYPE_SQUARE)
@@ -388,6 +399,7 @@ draw_square_mouse (int x, int y, int size)	/* size is pixels */
     Fgl_getbox (x - 2, y, 2, size, under_square_mouse_pointer_left);
     Fgl_getbox (x + size, y, 2, size, under_square_mouse_pointer_right);
     Fgl_getbox (x - 2, y + size, size + 4, 2, under_square_mouse_pointer_bottom);
+    mouse_buffer_fresh = 1;
 
     Fgl_hline (x - 2, y - 2, x + size + 1, yellow (31));
     Fgl_hline (x - 1, y - 1, x + size, blue (31));
@@ -413,11 +425,16 @@ hide_square_mouse (void)
     cs_square_mouse_visible = 0;
     RefreshArea (omx - 3, omy - 3, omx + size + 2, omy + size + 2);
 #else
-    Fgl_putbox (omx - 2, omy - 2, size + 4, 2, under_square_mouse_pointer_top);
-    Fgl_putbox (omx - 2, omy, 2, size, under_square_mouse_pointer_left);
-    Fgl_putbox (omx + size, omy, 2, size, under_square_mouse_pointer_right);
-    Fgl_putbox (omx - 2, omy + size, size + 4, 2, 
-		under_square_mouse_pointer_bottom);
+    if (mouse_buffer_fresh) {
+      Fgl_putbox (omx - 2, omy - 2, size + 4, 2, under_square_mouse_pointer_top);
+      Fgl_putbox (omx - 2, omy, 2, size, under_square_mouse_pointer_left);
+      Fgl_putbox (omx + size, omy, 2, size, under_square_mouse_pointer_right);
+      Fgl_putbox (omx - 2, omy + size, size + 4, 2, 
+		  under_square_mouse_pointer_bottom);
+      mouse_buffer_fresh = 0;
+    } else {
+      //      printf ("Mouse buffer stale in hide_mouse!  Not putting back!\n");
+    }
 #endif
 }
 
@@ -439,6 +456,7 @@ redraw_square_mouse (void)
     Fgl_getbox (omx - 2, omy, 2, size, under_square_mouse_pointer_left);
     Fgl_getbox (omx + size, omy, 2, size, under_square_mouse_pointer_right);
     Fgl_getbox (omx - 2, omy + size, size + 4, 2, under_square_mouse_pointer_bottom);
+    mouse_buffer_fresh = 1;
 
     Fgl_hline (omx - 2, omy - 2, omx + size + 1, yellow (31));
     Fgl_hline (omx - 1, omy - 1, omx + size, blue (31));
@@ -546,13 +564,35 @@ do_mouse_select_buttons (int rawx, int rawy, int mbutton)
 
 }
 
+void
+draw_module_cost (int grp)
+{
+  Rect* b = &scr.select_message;
+  char s[100];
 
+  get_group_cost(grp);
+  if (grp == GROUP_BARE) 
+    sprintf (s, "Bulldoze - cost POA");
+  else
+    sprintf (s, "%s %d  Bulldoze %d", main_groups[grp].name,
+	     get_group_cost(grp), main_groups[grp].bul_cost);
+
+#ifdef USE_EXPANDED_FONT
+    Fgl_fillbox (SELECT_BUTTON_MESSAGE_X, SELECT_BUTTON_MESSAGE_Y,
+		 44 * 8, 8, 0);
+    Fgl_fillbox (SELECT_BUTTON_MESSAGE_X, SELECT_BUTTON_MESSAGE_Y,
+		 44 * 8, 8, blue (10));
+    gl_setwritemode (WRITEMODE_MASKED | FONT_EXPANDED);
+#else
+    Fgl_fillbox (b->x, b->y, 42 * 8, 8, TEXT_BG_COLOUR);
+#endif
+
+  Fgl_write (b->x, b->y, s);
+}
 
 void
 do_select_button (int button, int mbutton)
 {
-    Rect* b = &scr.select_message;
-    char s[100];
     short grp;
     if (select_button_tflag[button] == 0 && mbutton != LC_MOUSE_RIGHTBUTTON) {
 	ok_dial_box ("not_enough_tech.mes", BAD, 0L);
@@ -576,31 +616,17 @@ do_select_button (int button, int mbutton)
 	choose_residence ();
     }
     grp = get_group_of_type(selected_type);
-    if (grp < 0) return;
+    if (grp < 0) return; /* XXX: WCK: When is this hit?  Should it hurt? */
 
-#ifdef USE_EXPANDED_FONT
-    Fgl_fillbox (SELECT_BUTTON_MESSAGE_X, SELECT_BUTTON_MESSAGE_Y,
-		 44 * 8, 8, 0);
-    Fgl_fillbox (SELECT_BUTTON_MESSAGE_X, SELECT_BUTTON_MESSAGE_Y,
-		 44 * 8, 8, blue (10));
-    gl_setwritemode (WRITEMODE_MASKED | FONT_EXPANDED);
-#else
-    Fgl_fillbox (b->x, b->y, 42 * 8, 8, TEXT_BG_COLOUR);
-#endif
-    selected_type_cost = get_group_cost(grp);
-    if (grp == GROUP_BARE) {
-	sprintf (s, " Bulldoze - cost POA");
 #ifdef LC_X11
+    if (grp == GROUP_BARE) 
 	XDefineCursor (display.dpy, display.win, pirate_cursor);
-#endif
-    } else {
-	sprintf (s, "%s %d  Bulldoze %d", main_groups[grp].name,
-		 selected_type_cost, main_groups[grp].bul_cost);
-#ifdef LC_X11
+    else
 	XDefineCursor (display.dpy, display.win, None);
 #endif
-    }
-    Fgl_write (b->x, b->y, s);
+
+    draw_module_cost(grp);
+
 #ifdef USE_EXPANDED_FONT
     gl_setwritemode (WRITEMODE_OVERWRITE | FONT_EXPANDED);
 #endif
@@ -698,29 +724,20 @@ do_mouse_main_win (int px, int py, int button)
     }
 
     /* Handle multitransport */
-    if (button == LC_MOUSE_LEFTBUTTON && GROUP_IS_TRANSPORT(g) 
-      && overwrite_transport_flag) {
-	if (mt_draw (px, py, MT_START))
+    if (button == LC_MOUSE_LEFTBUTTON && GROUP_IS_TRANSPORT(g)) {
+	if (mt_draw (px, py, MT_START)) {
+	    /* We need to set mps to current location, since the user might 
+	       click on the transport to see the mps */
+	    mappoint_stats (x, y, button);
 	    return;
+	}
     }
-      
+
     /* Handle bulldozing */
     if (selected_type == CST_GREEN && button != LC_MOUSE_RIGHTBUTTON) {
 	check_bulldoze_area (x, y);
 	return;
     }
-#if defined (commentout)
-    else if (overwrite_transport_flag
-	     && (main_groups[g].group == GROUP_TRACK
-		 || main_groups[g].group == GROUP_ROAD
-		 || main_groups[g].group == GROUP_RAIL)
-	     && (MP_GROUP(x,y) == GROUP_TRACK
-		 || MP_GROUP(x,y) == GROUP_ROAD
-		 || MP_GROUP(x,y) == GROUP_RAIL)
-	     && main_groups[g].group != MP_GROUP(x,y)) {
-	check_bulldoze_area (x, y);        /* continue to place new */
-    }
-#endif
 
     /* Bring up mappoint_stats for certain left mouse clicks */
     if (MP_TYPE(x,y) != CST_GREEN) {
@@ -960,14 +977,14 @@ do_mouse_other_buttons (int x, int y, int button)
     else if (mouse_in_rect (&scr.mini_map,x,y)) {
 	Rect* b = &scr.mini_map;
 	if (button == LC_MOUSE_RIGHTBUTTON) {
-	    activate_help ("mini-screen.hlp");
+	    mini_screen_help ();
 	    return;
 	}
 	if (mini_screen_flags == MINI_SCREEN_COAL_FLAG && !coal_survey_done) {
-	    if (yn_dial_box ("Coal survey"
-			     ,"This will cost you 1 million"
-			     ,"After that it's is free to call again"
-			     ,"Do coal survey?") == 0)
+	    if (yn_dial_box ("Coal survey",
+			     "This will cost you 1 million",
+			     "After that it's is free to call again",
+			     "Do coal survey?") == 0)
 	    {
 		return;
 	    }
@@ -999,7 +1016,18 @@ do_mouse_other_buttons (int x, int y, int button)
 
     else if (mouse_in_rect (&scr.mini_map_aux,x,y)) {
 	if (button == LC_MOUSE_RIGHTBUTTON) {
+	    /* Quick hack here -- need to generalize later */
+	    if (main_screen_flag == MINI_SCREEN_POL_FLAG)
+		main_screen_flag = MINI_SCREEN_NORMAL_FLAG;
+	    else
+		main_screen_flag = MINI_SCREEN_POL_FLAG;
+	    refresh_main_screen ();
+#if defined (commentout)  /* Help-based drawing */
+	    mini_screen_draw_in_main_win ();
+#endif
+#if defined (commentout)  /* LC v1.11 */
 	    activate_help ("mini-screen.hlp");
+#endif
 	    return;
 	}
 	rotate_mini_screen ();
@@ -1115,12 +1143,13 @@ do_mouse_other_buttons (int x, int y, int button)
     else if (mouse_in_rect (&scr.menu_button,x,y)) {
 	activate_help ("menu.hlp");
     }
-#if defined (commentout)
+
     /* this is the help button */
     else if (mouse_in_rect (&scr.help_button,x,y)) {
 	activate_help ("index.hlp");
     }
 
+#if defined (commentout)
     /* this is the save button */
     else if (mouse_in_rect (&scr.save_button,x,y)) {
 	if (load_flag == 0)
@@ -1128,13 +1157,14 @@ do_mouse_other_buttons (int x, int y, int button)
     }
 #endif
 
-#if defined (commentout)
     /* this is the results (stats) button */
     else if (mouse_in_rect (&scr.results_button,x,y)) {
 	if (button == LC_MOUSE_RIGHTBUTTON)
 	    return;
 	window_results ();
     }
+
+#if defined (commentout)
     /* this is the overwrite transport button button */
     else if (mouse_in_rect (&scr.tover_button,x,y)) {
 	if (button == LC_MOUSE_RIGHTBUTTON) {
@@ -1953,7 +1983,7 @@ int
 mt_draw (int cxp, int cyp, int flag) /* c[xy]p are pixel coordinates */
 {
 
-#define STATUS_MESSAGE_LENGTH 40
+#define STATUS_MESSAGE_LENGTH 80
     static int dx, dy; /* old current point; drawn point */
     static int ox, oy; /* coordinates for original button press */
     int cx, cy;   /* current mappoint coordinates */
@@ -1967,7 +1997,7 @@ mt_draw (int cxp, int cyp, int flag) /* c[xy]p are pixel coordinates */
 
     switch(flag) {
     case MT_SUCCESS:
-	if (ox == 0) 
+	if (ox == 0)
 	    return 0;
 	draw_ret = do_mt_draw(ox, dx, oy, dy, mt_erase);
 
@@ -1976,15 +2006,18 @@ mt_draw (int cxp, int cyp, int flag) /* c[xy]p are pixel coordinates */
 	       to build the road.  So clean up and exit. */
 	    mt_flag = 0;
 	    draw_main_window_box (green (8)); 
+	    status_message(NULL,25);
 	}
 	else if (draw_ret = do_mt_draw(ox, cx, oy, cy, mt_perm)) {
 
 	    print_total_money ();
 	    mt_flag = 0;
 	    draw_main_window_box (green (8)); 
+	    status_message(NULL,25);
 	} else {
 	    /* This shouldn't happen.  Clean up and continue anyway.  */
 	    mt_flag = 0;
+	    status_message(NULL,25);
 	    draw_main_window_box (green (8)); 
 	}
 	dx = 0; dy = 0;
@@ -1995,6 +2028,7 @@ mt_draw (int cxp, int cyp, int flag) /* c[xy]p are pixel coordinates */
 	mt_flag = 0;
 	draw_main_window_box (green (8));
 	draw_ret = do_mt_draw(ox, dx, oy, dy, mt_erase);
+	status_message(NULL,25);
 
 	dx = 0; dy = 0;
 	ox = 0; oy = 0;
@@ -2009,10 +2043,14 @@ mt_draw (int cxp, int cyp, int flag) /* c[xy]p are pixel coordinates */
 
 	if (!draw_ret) {
 	    draw_ret = do_mt_draw(ox, cx, oy, cy, mt_erase);
-	};
-	snprintf(s,STATUS_MESSAGE_LENGTH-1,"%10s: %3d * %20d",
-		 mt_name,mt_cost,
-		 mt_cost * get_type_cost(selected_type));
+	    snprintf(s,STATUS_MESSAGE_LENGTH-1,
+		     "Can't build %s over that!", mt_name);
+	} else { 
+	    snprintf(s,STATUS_MESSAGE_LENGTH-1,
+		     "%d sections of %s will cost %3d to build",
+		     mt_cost, mt_name, mt_cost * get_type_cost(selected_type));
+	}
+
 	status_message(s,25);
 	dx = cx; dy = cy;
 	break;
@@ -2048,7 +2086,6 @@ mt_draw (int cxp, int cyp, int flag) /* c[xy]p are pixel coordinates */
     return (1);
 }
 
-
 int 
 cmp(int n1, int n2)
 {
@@ -2057,3 +2094,90 @@ cmp(int n1, int n2)
     else
 	return 0;
 }
+
+
+
+void
+init_mouse_registry()
+{
+    mhandle_first = NULL;
+    mhandle_last = NULL;
+    mhandle_current = NULL;
+    mhandle_count = 0;
+}
+
+/* Add and return an entry in the registry.  Add it at the beginning, so
+   it supercedes earlier entries in mouse_handle_click() */
+
+Mouse_Handle *
+mouse_register(Rect * r, void (*function)(int, int, int)) 
+{
+
+    mhandle_current = (Mouse_Handle *)lcalloc(sizeof(Mouse_Handle));
+    mhandle_count++;
+    if (mhandle_first == NULL) {
+	mhandle_current->next = NULL;
+	mhandle_current->prev = NULL;
+    } else {
+	mhandle_current->next = mhandle_first;
+	mhandle_first->prev = mhandle_current;
+	mhandle_current->prev = NULL;
+    }
+
+    mhandle_first = mhandle_current;
+
+    mhandle_current->r = r;
+    mhandle_current->handler = function;
+
+    return mhandle_current;
+}
+
+
+/* Remove an entry from the registry */
+
+void 
+mouse_unregister(Mouse_Handle * mhandle)
+{
+
+    if (mhandle->prev == NULL) {
+	if (mhandle_first != mhandle) 
+	    printf("debug: mhandle_first != mhandle\n");
+	if (mhandle->next != NULL) {
+	    mhandle_first = mhandle->next;
+	    mhandle_first->prev = NULL;
+	} else 
+	    mhandle_first = NULL;
+    } else if (mhandle->next == NULL) 
+	mhandle->prev->next = NULL;
+    else {
+	mhandle->prev->next = mhandle->next;
+	mhandle->next->prev = mhandle->prev;
+    }
+
+    free(mhandle);
+    mhandle_count--;
+}
+
+/* Loop through the registry until we find a handler for an area.  
+   BEWARE!!!  Some handlers unregister themselves when called.  Assume 
+   mhandle_current is undefined after calling mhandle_current->handler()
+*/
+
+int 
+mouse_handle_click(int x, int y, int button) 
+{
+    mhandle_current = mhandle_first;
+
+    while (mhandle_current != NULL) {
+	if (mouse_in_rect(mhandle_current->r,x,y)) {
+	    mhandle_current->handler(x - mhandle_current->r->x, 
+				     y - mhandle_current->r->y, button);
+	    return 1;
+	}
+	
+	mhandle_current = mhandle_current->next;
+    }
+
+    return 0;
+}
+    

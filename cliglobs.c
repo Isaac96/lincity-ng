@@ -21,6 +21,9 @@ char *select_button_graphic[NUMOF_SELECT_BUTTONS];
 int select_button_tflag[NUMOF_SELECT_BUTTONS];
 char select_button_help[NUMOF_SELECT_BUTTONS][20];
 
+/* GCS FIX: Should change name to something like "SCREEN_NORMAL_FLAG" */
+int main_screen_flag = MINI_SCREEN_NORMAL_FLAG;
+
 int mappoint_stats_flag = 0, mappoint_stats_time = 0;
 int mini_screen_flags = MINI_SCREEN_NORMAL_FLAG;
 int mini_screen_time = 0;
@@ -32,7 +35,12 @@ int mouse_initialized = 0;
 int cs_mouse_x, cs_mouse_y, cs_mouse_button;	/* current mouse status */
 int cs_mouse_shifted = 0;	/* shift key pressed with mouse. */
 int cs_mouse_xmax, cs_mouse_ymax, omx, omy, mox = 10, moy = 10;
-int cs_mouse_button_repeat, mouse_hide_count, cs_mouse_button_delay;
+
+#ifdef MOUSE_REPEAT
+int cs_mouse_button_repeat, cs_mouse_button_delay;
+#endif
+
+int mouse_hide_count;
 #if defined (WIN32)
 /* int cs_current_mouse_x, cs_current_mouse_y, cs_current_mouse_button; */
 int cs_square_mouse_visible = 0;
@@ -48,7 +56,7 @@ int mouse_type = MOUSE_TYPE_NORMAL;
 
 int mt_start_posx, mt_start_posy, mt_current_posx, mt_current_posy;
 
-int screen_refresh_flag = 1;
+int screen_refresh_flag = 0;
 
 char *months[] =
 {N_("Jan"), N_("Feb"), N_("Mar"), N_("Apr"),

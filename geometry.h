@@ -19,6 +19,11 @@ struct screen_geometry_struct
 {
     int border_x;
     int border_y;
+    int client_w;
+    int client_h;
+
+    /* Entire window */
+    Rect client_win;
 
     /* Main window */
     Rect main_win;
@@ -182,10 +187,12 @@ void draw_small_bezel (int x, int y, int w, int h, int colour);
 #define FAST_BUTTON_H 16
 #define FAST_BUTTON_W 32
 
+#if defined (commentout)
 #define HELP_BUTTON_X 608
 #define HELP_BUTTON_Y 448
 #define HELP_BUTTON_W 32
 #define HELP_BUTTON_H 32
+#endif
 #define QUIT_BUTTON_X 608
 #define QUIT_BUTTON_Y 416
 #define QUIT_BUTTON_W 32
@@ -199,13 +206,26 @@ void draw_small_bezel (int x, int y, int w, int h, int colour);
 #define SAVE_BUTTON_W 32
 #define SAVE_BUTTON_H 32
 
+/* Stats button */
+#if defined (commentout)
+#define RESULTS_BUTTON_X 640 - 32
+#define RESULTS_BUTTON_Y 480 - 16
+#define RESULTS_BUTTON_W 32
+#define RESULTS_BUTTON_H 16
+#endif
+#define HELP_BUTTON_X 640 - 56
+#define HELP_BUTTON_Y 480 - 24
+#define HELP_BUTTON_W 56
+#define HELP_BUTTON_H 24
+
+#define RESULTS_BUTTON_X 640 - 2*56
+#define RESULTS_BUTTON_Y 480 - 24
+#define RESULTS_BUTTON_W 56
+#define RESULTS_BUTTON_H 24
+
 /* Misc buttons */
 #define MISC_BUTTONS_X 0
 #define MISC_BUTTONS_Y 400
-#define RESULTS_BUTTON_X MISC_BUTTONS_X
-#define RESULTS_BUTTON_Y MISC_BUTTONS_Y
-#define RESULTS_BUTTON_W 32
-#define RESULTS_BUTTON_H 16
 #define TOVER_BUTTON_X MISC_BUTTONS_X + 32
 #define TOVER_BUTTON_Y MISC_BUTTONS_Y
 #define TOVER_BUTTON_W 32
@@ -264,14 +284,12 @@ void draw_small_bezel (int x, int y, int w, int h, int colour);
 #define PBAR_MONEY_Y    PBAR_POP_Y+(PBAR_H+1)*8
 #endif /* commentout */
 
-
-#define DATE_X                    100
-#define DATE_Y                    470
+#define DATE_W                    112
 #define TIME_FOR_YEAR_X           320
 #define TIME_FOR_YEAR_Y           470
-#define SELECT_BUTTON_MESSAGE_X   100
+#define SELECT_BUTTON_MESSAGE_X   MAIN_WIN_X
 #define SELECT_BUTTON_MESSAGE_Y   460
-#define STATUS_MESSAGE_X          100
+#define STATUS_MESSAGE_X          MAIN_WIN_X
 #define STATUS_MESSAGE_Y          450
 
 #define SUST_SCREEN_X 96

@@ -29,6 +29,7 @@ int grid_inc = 0;
 Grid * grid[MAX_GRIDS];
 int last_grid_alloc = -1;  
 
+#define POWER_MODULUS 25 // Controls how often we see a packet
 
 
 /* power_time_step 
@@ -60,6 +61,11 @@ power_time_step ()
     grid[gi]->avail_power = 0;
     grid[gi]->demand = 0;
   }
+
+  /* Clear substation 'Here' counter */
+  for (gi = 0; gi < numof_substations; gi++) 
+    MP_INFO(substationx[gi],substationy[gi]).int_5 = 0;
+
 }
 
 
@@ -91,7 +97,7 @@ map_power_grid ()
 	  grid[grid_num]->demand = 0;
 	  grid[grid_num]->max_power = 0;
 	  
-	  recurse_power_grid(mapx,mapy);
+	  recurse_power_grid(mapx,mapy,0);
 	  //	  grid[grid_num]->max_power = grid[grid_num]->total_power;
 	}      
       }
@@ -157,14 +163,18 @@ should really handle the connect_transport bit for power lines.  That
 would help perspicuity anyway. */
 
 void 
-recurse_power_grid (int startx, int starty) 
+recurse_power_grid (int startx, int starty, int steps) 
 {
   static int level;                /* debug: levels of recursion encountered */
+  int count = steps;                /* number of steps taken - for animation */
   short dir = -1;    /* -1 undetermined, 0 nothing left, Direction #defines  */
   int mapx = startx, mapy = starty;                         /* to move about */
   int inc;                /* handles special case of stepping over transport */
   
   level++;
+  
+  if (count % POWER_MODULUS == 0)
+    count = 0;
 
   /* Old windmills aren't grid connected, so they are on their own 'grid'.  We
    ignore them in the main loop.  This case should only be reached from a 
@@ -187,13 +197,20 @@ recurse_power_grid (int startx, int starty)
   while (dir != 0) {
 
     /* Set to current grid */
-    MP_INFO(mapx,mapy).int_6 = grid_num;
-    MP_INFO(mapx,mapy).int_7 = grid_inc;
 
     /* figure out what we are on */
     if (IS_POWER_LINE(mapx,mapy)) {
       grid[grid_num]->power_lines++;
+      MP_INFO(mapx,mapy).int_5 = (count++ % POWER_MODULUS);
+      if ((MP_TYPE(mapx,mapy) >= 1) && (MP_TYPE(mapx,mapy) <= 11))
+	MP_TYPE(mapx,mapy) += 11;
+
+
     }
+
+    MP_INFO(mapx,mapy).int_6 = grid_num;
+    MP_INFO(mapx,mapy).int_7 = grid_inc;
+
 
     /* For each direction, check map bounds, check if there is power stuff
        there, then either remember to follow it later or start a new
@@ -205,7 +222,7 @@ recurse_power_grid (int startx, int starty)
 	if (dir < 1) 
 	  dir = WEST;
 	else
-	  recurse_power_grid(mapx - inc, mapy);
+	  recurse_power_grid(mapx - inc, mapy, count + 1);
 
 
 /* North */
@@ -214,7 +231,7 @@ recurse_power_grid (int startx, int starty)
 	if (dir < 1) 
 	  dir = NORTH;
 	else 
-	  recurse_power_grid(mapx, mapy - inc);
+	  recurse_power_grid(mapx, mapy - inc, count + 1);
 
 
 /* East */    
@@ -223,7 +240,7 @@ recurse_power_grid (int startx, int starty)
 	if (dir < 1) 
 	  dir = EAST;
 	else 
-	  recurse_power_grid(mapx + inc, mapy);
+	  recurse_power_grid(mapx + inc, mapy, count + 1);
 
 
 /* South */    
@@ -232,7 +249,7 @@ recurse_power_grid (int startx, int starty)
 	if (dir < 1) 
 	  dir = SOUTH;
 	else 
-	  recurse_power_grid(mapx, mapy + inc);
+	  recurse_power_grid(mapx, mapy + inc, count + 1);
 
 
     /* Move to a new square if the chosen direction is not already mapped. */
@@ -349,6 +366,7 @@ get_power (int x, int y, int power, int block_industry)
 	grid[grid_tmp]->demand += power;
 	if (grid[grid_tmp]->total_power >= power) {
 	  grid[grid_tmp]->total_power -= power;
+	  MP_INFO(xi,yi).int_5 += power;
 	  return 1;
 	}
 	
@@ -360,6 +378,7 @@ get_power (int x, int y, int power, int block_industry)
 
 /*** Substations ***/
 /*
+  int_5 is the power demand at this substation
   int_6 is the grid its connected to
   int_7 is a grid timestamp
 */
@@ -589,11 +608,27 @@ do_power_source_coal (int x, int y)
 void
 do_power_line (int x, int y)
 {
-  static int i;
-  if (++i > 10000) {
-    printf("i wrapped in do_power_line\n");
-    i = 0;
-  }
-  return;
-}
 
+  if (grid[MP_INFO(x,y).int_6]->powered == -1)
+     return;
+
+  switch(MP_INFO(x,y).int_5) 
+    {
+    case 0: 
+      MP_INFO(x,y).int_5 = POWER_MODULUS;
+      break;
+    case 1: 
+      if (!(MP_TYPE(x,y) <= 11 && MP_TYPE(x,y) >= 1)) 
+	break;
+      MP_TYPE(x,y) += 11;
+      break;
+    case 2: 
+      if (!(MP_TYPE(x,y) >= 11 && MP_TYPE(x,y) <= 22))
+	break;
+      MP_TYPE(x,y) -= 11;
+      break;
+
+  }
+
+  MP_INFO(x,y).int_5--;
+}

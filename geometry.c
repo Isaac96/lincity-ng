@@ -35,6 +35,14 @@ initialize_geometry (Screen_Geometry* scr)
     scr->border_x = 0;
     scr->border_y = 0;
 
+    scr->client_w = 640;
+    scr->client_h = 480;
+
+    scr->client_win.x = 0;
+    scr->client_win.y = 0;
+    scr->client_win.w = 640;
+    scr->client_win.h = 480;
+
     scr->main_win.x = MAIN_WIN_X;
     scr->main_win.y = MAIN_WIN_Y;
     scr->main_win.h = MAIN_WIN_H;
@@ -165,20 +173,21 @@ initialize_geometry (Screen_Geometry* scr)
     scr->select_message.h = 0;  /* unused */
     scr->select_message.w = 0;  /* unused */
 
-    scr->date.x = DATE_X;
-    scr->date.y = DATE_Y;
+    scr->date.w = DATE_W;  
+    scr->date.x = scr->main_win.x + ((scr->main_win.w - scr->date.w) / 2);
+    scr->date.y = scr->main_win.y + scr->main_win.h + 16;
     scr->date.h = 0;  /* unused */
-    scr->date.w = 0;  /* unused */
 
-    scr->time_for_year.x = TIME_FOR_YEAR_X;
+
+    scr->time_for_year.x = scr->main_win.x;
     scr->time_for_year.y = TIME_FOR_YEAR_Y;
     scr->time_for_year.h = 0;  /* unused */
     scr->time_for_year.w = 0;  /* unused */
 
-    scr->status_message.x = STATUS_MESSAGE_X;
+    scr->status_message.x = scr->main_win.x;
     scr->status_message.y = STATUS_MESSAGE_Y;
-    scr->status_message.h = 0;
-    scr->status_message.w = 0;
+    scr->status_message.h = 8;
+    scr->status_message.w = scr->main_win.w;
 
     scr->mini_map.x = MINI_SCREEN_X;
     scr->mini_map.y = MINI_SCREEN_Y;
@@ -273,21 +282,37 @@ resize_geometry (int new_width, int new_height)
 	return;
     }
 
+    /* Reset geometry back to default */
+    initialize_geometry (&scr);
+
+    scr.client_win.w = new_width;
+    scr.client_win.h = new_height;
+
+    if (pix_double) {
+	new_width = new_width / 2;
+	new_height = new_height / 2;
+    }
+
     /* Update display info */
     display.winW = new_width;
     display.winH = new_height;
 
     /* Expand pixmap if necessary */
-    new_width = new_width - 2*borderx;
-    new_height = new_height - 2*bordery;
-    resize_pixmap (new_width, new_height);
+    scr.client_w = new_width - 2*borderx;
+    scr.client_h = new_height - 2*bordery;
+    resize_pixmap (scr.client_w, scr.client_h);
 
     /* Adjust items that need adjusting */
-    initialize_geometry (&scr);
-    scr.select_message.y = SELECT_BUTTON_MESSAGE_Y + (new_height - 480);
-    scr.date.y = DATE_Y + (new_height - 480);
-    scr.time_for_year.y = TIME_FOR_YEAR_Y + (new_height - 480);
-    resize_main_win (new_width, new_height);
+
+    resize_main_win (scr.client_w, scr.client_h);
+
+    scr.select_message.y = SELECT_BUTTON_MESSAGE_Y + (scr.client_h - 480);
+    scr.time_for_year.y = TIME_FOR_YEAR_Y + (scr.client_h - 480);
+    scr.status_message.y = scr.client_win.h - 30;
+    scr.status_message.w = scr.main_win.w;
+
+    scr.date.y = scr.main_win.y + scr.main_win.h + 16;
+    scr.date.x = ((scr.main_win.w - scr.date.w) / 2) + scr.main_win.x;
 
     scr.pbar_area.x = 56 + scr.main_win.w + 16 + 2;
     scr.pbar_pop.x = scr.pbar_area.x + 4;
@@ -308,6 +333,11 @@ resize_geometry (int new_width, int new_height)
     scr.mini_map_area.x = scr.pbar_area.x + 4;
     scr.mini_map.x = scr.mini_map_aux.x 
 	    + ((scr.mini_map_aux.w - scr.mini_map.w) / 2);
+
+    scr.help_button.x = scr.client_w - 56;
+    scr.help_button.y = scr.client_h - 24;
+    scr.results_button.x = scr.client_w - 2*56;
+    scr.results_button.y = scr.client_h - 24;
 
     /* Complete refresh of the screen required here */
     screen_full_refresh ();
@@ -477,14 +507,6 @@ draw_menu (void)
 
     Fgl_fillbox (b->x, b->y, b->w, b->h, white(20));
     Fgl_fillbox (b->x+5, b->y+4, b->w-10, b->h-5, menu_bg_color);
-    /*
-    Fgl_hline (b->x, b->y, b->x + b->w, 255);
-    Fgl_line (b->x, b->y, b->x, b->y + b->h-1, 255);
-    Fgl_hline (b->x, b->y + b->h-1, b->x + b->w, 0);
-    Fgl_line (b->x + b->w, b->y, b->x + b->w, b->y + b->h-1, 0);
-    Fgl_hline (b->x+1, b->y + b->h-2, b->x + b->w-1, 240);
-    Fgl_line (b->x + b->w-1, b->y+1, b->x + b->w-1, b->y + b->h-2, 240);
-    */
     
     Fgl_hline (b->x+5, b->y+4, b->x + b->w-5, white(8));
     Fgl_line (b->x+5, b->y+4, b->x+5, b->y + b->h-2, white(8));
@@ -493,6 +515,56 @@ draw_menu (void)
 
     Fgl_setfontcolors (menu_bg_color,menu_fg_color);
     Fgl_write (b->x + 12, b->y + 9, _("Menu"));
+    Fgl_setfontcolors (TEXT_BG_COLOUR, TEXT_FG_COLOUR);
+}
+
+void 
+draw_help (void)
+{
+    /*    int menu_bg_color = white(20);*/
+    /*    int menu_bg_color = TEXT_BG_COLOUR; */
+    /*    int menu_bg_color = 14;*/
+    /*    int menu_fg_color = TEXT_FG_COLOUR;*/
+    int menu_bg_color = 80;
+    int menu_fg_color = 226;
+
+    Rect* b = &scr.help_button;
+
+    Fgl_fillbox (b->x, b->y, b->w, b->h, white(20));
+    Fgl_fillbox (b->x+5, b->y+4, b->w-10, b->h-5, menu_bg_color);
+    
+    Fgl_hline (b->x+5, b->y+4, b->x + b->w-5, white(8));
+    Fgl_line (b->x+5, b->y+4, b->x+5, b->y + b->h-2, white(8));
+    Fgl_hline (b->x+5, b->y + b->h-2, b->x + b->w-5, white(8));
+    Fgl_line (b->x + b->w-5, b->y+4, b->x + b->w-5, b->y + b->h-2, white(8));
+
+    Fgl_setfontcolors (menu_bg_color,menu_fg_color);
+    Fgl_write (b->x + 12, b->y + 9, _("Help"));
+    Fgl_setfontcolors (TEXT_BG_COLOUR, TEXT_FG_COLOUR);
+}
+
+void 
+draw_results (void)
+{
+    /*    int menu_bg_color = white(20);*/
+    /*    int menu_bg_color = TEXT_BG_COLOUR; */
+    /*    int menu_bg_color = 14;*/
+    /*    int menu_fg_color = TEXT_FG_COLOUR;*/
+    int menu_bg_color = 80;
+    int menu_fg_color = 226;
+
+    Rect* b = &scr.results_button;
+
+    Fgl_fillbox (b->x, b->y, b->w, b->h, white(20));
+    Fgl_fillbox (b->x+5, b->y+4, b->w-10, b->h-5, menu_bg_color);
+    
+    Fgl_hline (b->x+5, b->y+4, b->x + b->w-5, white(8));
+    Fgl_line (b->x+5, b->y+4, b->x+5, b->y + b->h-2, white(8));
+    Fgl_hline (b->x+5, b->y + b->h-2, b->x + b->w-5, white(8));
+    Fgl_line (b->x + b->w-5, b->y+4, b->x + b->w-5, b->y + b->h-2, white(8));
+
+    Fgl_setfontcolors (menu_bg_color,menu_fg_color);
+    Fgl_write (b->x + 12, b->y + 9, _("Stats"));
     Fgl_setfontcolors (TEXT_BG_COLOUR, TEXT_FG_COLOUR);
 }
 
@@ -524,7 +596,6 @@ draw_help (void)
     Rect* b = &scr.help_button;
     Fgl_putbox (b->x, b->y, 32, 32, help_button_graphic);
 }
-#endif
 
 void 
 draw_results (void)
@@ -533,6 +604,7 @@ draw_results (void)
     Fgl_putbox (b->x, b->y, 16, 16, results_button1);
     Fgl_putbox (b->x + 16, b->y, 16, 16, results_button2);
 }
+#endif
 
 void
 draw_select_button_graphic (int button, char *graphic)
@@ -667,5 +739,21 @@ draw_small_bezel (int x, int y, int w, int h, int colour)
 	Fgl_line (x - 1 - i, y - 1 - i, x - 1 - i, y + h + i, colour + 14);
 	Fgl_hline (x - 1 - i, y + h + i, x + w + i, colour + 22);
 	Fgl_line (x + w + i, y - 1 - i, x + w + i, y + h + i, colour + 24);
+    }
+}
+
+void 
+draw_bezel (Rect r, short width, int color)
+{
+  int i;
+  int c;
+  for (i = 0; i < width; i++)
+    {
+      c = color + (width - i) * 2;
+      Fgl_hline (r.x + i, r.y + i, r.x + r.w - i - 1, c);
+      Fgl_hline (r.x + i, r.y + r.h - i - 1, r.x + r.w - i - 1, c);
+      Fgl_line (r.x + i, r.y + i, r.x + i, r.y + r.h - i - 1, c);
+      Fgl_line (r.x + r.w - i - 1, r.y + i, r.x + r.w - i - 1, 
+		r.y + r.h - i - 1, c);
     }
 }

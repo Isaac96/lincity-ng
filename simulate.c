@@ -193,7 +193,7 @@ simulate_mappoints (void)
 		do_residence (x, y);
 		break;
 	    case GROUP_POWER_LINE:
-	      //		do_power_line (x, y);
+	        do_power_line (x, y);
 		break;
 	    case GROUP_SOLAR_POWER:
 		do_power_source (x, y);
@@ -485,11 +485,13 @@ clear_game (void)
     numof_communes = 0;
     numof_substations = 0;
     numof_health_centres = 0;
+    numof_markets = 0;
     max_pop_ever = 0;
     total_evacuated = 0;
     total_births = 0;
     total_money = 0;
     tech_level = 0;
+    sanity_check();
 }
 
 void
@@ -752,6 +754,7 @@ random_start (int* originx, int* originy)
     quick_start_add (xx + 9, yy + 9, CST_POTTERY_0, 2);
 }
 
+/* XXX: WCK: What is up with this?  Why not just use set_mappoint?! */
 static void
 quick_start_add (int x, int y, short type, int size)
 {

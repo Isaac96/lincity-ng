@@ -7,12 +7,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include "lcstring.h"
 #include "common.h"
 #include "lctypes.h"
 #include "lin-city.h"
 #include "screen.h"
 #include "engglobs.h"
+#include "cliglobs.h"
 #include "clistubs.h"
 #include "pixmap.h"
 #include "lchelp.h"
@@ -21,6 +25,7 @@
 #include "lcintl.h"
 #include "ldsvgui.h"
 #include "pbar.h"
+#include "dialbox.h"
 
 /* ---------------------------------------------------------------------- *
  * External Global Variables
@@ -42,6 +47,8 @@ Update_Scoreboard update_scoreboard;
 
 int monthgraph_style = MONTHGRAPH_STYLE_MIN;
 int mps_global_style = MPS_GLOBAL_STYLE_MIN;
+
+char screen_refreshing = 0; 
 
 /* ---------------------------------------------------------------------- *
  * Private Global Variables
@@ -65,8 +72,10 @@ static void do_history_linegraph (int draw);
 static void do_sust_barchart (int draw);
 static void draw_sustline (int yoffset, int count, int max, int col);
 void monthgraph_full_refresh (void);
-
+void draw_mini_pol_in_main_win ();
 void mini_full_refresh (void);
+void update_main_screen_normal (void);
+void update_main_screen_pollution (void);
 
 
 
@@ -76,9 +85,13 @@ void mini_full_refresh (void);
 void
 draw_background (void)
 {
-  /* XXX: we don't need to draw the whole background! */
+    /* XXX: we don't need to draw the whole background! */
+    /* GCS: but this routine is only called on a full refresh, so it's OK */
 #if defined (LC_X11) || defined (WIN32)
-    /* Still need to add code here to draw border region */
+    /* Draw border region, but don't put into pixmap */
+    draw_border ();
+
+    /* Draw main area */
     Fgl_fillbox (0, 0, pixmap_width, pixmap_height, TEXT_BG_COLOUR);
 #else /* SVGALIB */
     Fgl_fillbox (0, 0, 640, 480, TEXT_BG_COLOUR);
@@ -89,14 +102,19 @@ void
 refresh_main_screen ()
 {
     Rect* b = &scr.main_win;
-    if (!(market_cb_flag || port_cb_flag))
+//    if (!(market_cb_flag || port_cb_flag))
     /* XXX: Don't resize the screen now! */
+    /* XXX: wck: Safer with the above test commented out;  atleast you can
+       still see the map */
+
     {
 	connect_transport (main_screen_originx, main_screen_originy,
 			   b->w / 16, b->h / 16);
-	screen_refresh_flag = 1;
+	screen_refresh_flag++;
 	update_main_screen ();
 	update_mini_screen ();
+	dialog_refresh();
+	screen_refresh_flag--;
     }
 }
 
@@ -117,7 +135,30 @@ unclip_main_window ()
 void
 update_main_screen (void)
 {
-    Rect* b = &scr.main_win;
+    switch (main_screen_flag)
+    {
+    case MINI_SCREEN_NORMAL_FLAG:
+	update_main_screen_normal ();
+	break;
+    case MINI_SCREEN_POL_FLAG:
+	update_main_screen_pollution ();
+	break;
+    };
+
+#if defined (WIN32)
+    if (screen_refresh_flag) {
+	UpdateWindow (display.hWnd);
+    }
+#else
+    if (mouse_type == MOUSE_TYPE_SQUARE)
+	redraw_mouse ();
+#endif
+}
+
+void
+update_main_screen_normal (void)
+{
+    Rect* mw = &scr.main_win;
     int x, y, xm, ym;
     short typ, grp;
 #ifdef USE_PIXMAPS
@@ -129,6 +170,10 @@ update_main_screen (void)
 #endif
     if (help_flag || load_flag || save_flag)
 	return;
+
+    /* GCS: I moved the code to reset the main_screen_origin to the 
+       function load_city(), where I think is more appropriate. */
+
     xm = main_screen_originx;
     if (xm > 3)
 	xm = 3;
@@ -141,9 +186,9 @@ update_main_screen (void)
 #endif
     clip_main_window ();
     for (y = main_screen_originy - ym; y < main_screen_originy
-		 + (b->h / 16); y++)
+		 + (mw->h / 16); y++)
 	for (x = main_screen_originx - xm; x < main_screen_originx
-		     + (b->w / 16); x++)
+		     + (mw->w / 16); x++)
 	{
 	    typ = MP_TYPE(x,y);
 	    if (typ != mappointoldtype[x][y] || screen_refresh_flag)
@@ -162,14 +207,14 @@ update_main_screen (void)
 		    if (y < main_screen_originy)
 			y1 = (main_screen_originy - y) * 16;
 		    sx = sy = main_groups[grp].size;
-		    if ((sx + x) > (main_screen_originx + (b->w / 16)))
-			sx = (main_screen_originx + (b->w / 16)) - x;
-		    if ((sy + y) > (main_screen_originy + (b->h / 16)))
-			sy = (main_screen_originy + (b->h / 16)) - y;
+		    if ((sx + x) > (main_screen_originx + (mw->w / 16)))
+			sx = (main_screen_originx + (mw->w / 16)) - x;
+		    if ((sy + y) > (main_screen_originy + (mw->h / 16)))
+			sy = (main_screen_originy + (mw->h / 16)) - y;
 		    sx = (sx << 4) - x1;
 		    sy = (sy << 4) - y1;
-		    dx = b->x + (x - main_screen_originx) * 16 + x1;
-		    dy = b->y + (y - main_screen_originy) * 16 + y1;
+		    dx = mw->x + (x - main_screen_originx) * 16 + x1;
+		    dy = mw->y + (y - main_screen_originy) * 16 + y1;
 		    if (sx > 0 && sy > 0)
 		    {
 #if defined (LC_X11)
@@ -195,31 +240,54 @@ update_main_screen (void)
 			update_pixmap (x1, y1, sx, sy, dx, dy,
 				       main_groups[grp].size,
 				       main_types[typ].graphic);
+
 		    }
 		}
 		else
 #endif /* USE_PIXMAPS */
-		    Fgl_putbox (b->x + (x - main_screen_originx) * 16,
-				b->y + (y - main_screen_originy) * 16,
+		    Fgl_putbox (mw->x + (x - main_screen_originx) * 16,
+				mw->y + (y - main_screen_originy) * 16,
 				16 * main_groups[grp].size,
 				16 * main_groups[grp].size,
-				main_types[typ].graphic);
+				main_types[typ].graphic); 
 	    }
 	}
     unclip_main_window ();
-#if defined (WIN32)
-    if (screen_refresh_flag)
-    {
-	UpdateWindow (display.hWnd);
+}
+
+void
+update_main_screen_pollution (void)
+{
+    Rect* mw = &scr.main_win;
+    int x, y, col;
+
+    for (y = main_screen_originy;
+	 y < main_screen_originy + (mw->h / 16); y++) {
+	for (x = main_screen_originx;
+	     x < main_screen_originx + (mw->w / 16); x++) {
+	    if (MP_POL(x,y) < 4) {
+		col = green (24);
+	    } else if (MP_POL(x,y) < 600) {
+		col = green (23 - (MP_POL(x,y) / 45));
+	    } else {
+		col = (int) sqrt ((float) (MP_POL(x,y) - 600)) / 9;
+		if (col > 20)
+		    col = 20;
+		col += red (11);
+	    }
+	    Fgl_fillbox (mw->x + (x - main_screen_originx) * 16,
+			 mw->y + (y - main_screen_originy) * 16,
+			 16, 16, col);
+	}
     }
-#else
-    if (mouse_type == MOUSE_TYPE_SQUARE)
-	redraw_mouse ();
-#endif
-    screen_refresh_flag = 0;
 }
 
 /* *******************  SCREEN SETUP  ******************* */
+
+/* XXX: WCK: All of the drawing should be done already in screen_full_refresh;
+   Why do it here? */
+/* GCS: Actually, this function loads the graphics from disk */
+/* WCK: Yes, but it used to refresh everything after doing that. */
 void
 screen_setup (void)
 {
@@ -318,8 +386,11 @@ screen_setup (void)
 #endif
 
     /* Load and draw menu buttons */
+#if defined (commentout)
     menu_button_graphic = load_graphic ("menu-button.csi");
+#endif
     draw_menu ();
+    draw_help ();
 #if defined (commentout)
     load_button_graphic = load_graphic ("load-button.csi");
     draw_load ();
@@ -331,9 +402,11 @@ screen_setup (void)
     draw_help ();
 #endif
 
+#ifdef SCREEN_SETUP_DRAWS
     mini_full_refresh ();
 
     redraw_mouse ();
+#endif
 
     /* load select button graphics */
     select_button_graphic[sbut[0]] = load_graphic ("buldoze-button.csi");
@@ -465,7 +538,9 @@ screen_setup (void)
     select_button_type[sbut[31]] = CST_CRICKET_1;
     strcpy (select_button_help[sbut[31]], "cricket.hlp");
 
+#ifdef SCREEN_SETUP_DRAWS
     draw_select_buttons ();
+#endif
 
     /* disable all the buttons 
        then enable the ones that are available at the start
@@ -474,13 +549,16 @@ screen_setup (void)
 	select_button_tflag[i] = 0;
     }
 
-    update_select_buttons ();
+#ifdef SCREEN_SETUP_DRAWS
     update_main_screen ();
+#endif
+
 }
 
 void
 screen_full_refresh (void)
 {
+    screen_refreshing++;
     draw_background ();
 
     monthgraph_full_refresh ();
@@ -495,6 +573,7 @@ screen_full_refresh (void)
 	draw_main_window_box (green (8));
 
     draw_menu ();
+    draw_help ();
 #if defined (commentout)
     draw_load ();
     draw_save ();
@@ -505,17 +584,24 @@ screen_full_refresh (void)
     draw_slow (slow_flag & !pause_flag);
     draw_med (med_flag & !pause_flag);
     draw_fast (fast_flag & !pause_flag);
+    draw_results ();
 
     draw_select_buttons ();
 
     /* GCS:  What about resize during load/save/prefs? */
+    /* WCK:  We could just lock resize off when we enter them. */
     if (help_flag) {
 	refresh_help_page ();
     }
     refresh_main_screen ();
     print_date();
     print_time_for_year();
+
+    draw_module_cost(get_group_of_type(selected_type));
+
     refresh_pbars();
+    redraw_mouse();  /* screen_setup used to do this */
+    screen_refreshing--;
 }
 
 #if defined (commentout)
@@ -547,10 +633,14 @@ draw_select_buttons (void)
     for (i = 0; i < NUMOF_SELECT_BUTTONS; i++) 
       draw_select_button_graphic (sbut[i], select_button_graphic[sbut[i]]);
 
-    update_select_buttons ();
+    highlight_select_button(old_selected_button);
+
 }
 
 
+
+/* XXX: WCK: this is engine code - what is it doing here?  Should be in
+   either (e.g.) tech.c or sbut.c and call draw_select_buttons. */
 void
 update_select_buttons (void)
 {
@@ -818,6 +908,41 @@ update_mini_screen (void)
 }
 
 void
+mini_screen_help (void)
+{
+    switch (mini_screen_flags)
+    {
+    case MINI_SCREEN_NORMAL_FLAG:
+	activate_help ("msb-normal.hlp");
+	break;
+    case MINI_SCREEN_POL_FLAG:
+	activate_help ("msb-pol.hlp");
+	break;
+    case MINI_SCREEN_UB40_FLAG:
+	activate_help ("msb-ub40.hlp");
+	break;
+    case MINI_SCREEN_STARVE_FLAG:
+	activate_help ("msb-starve.hlp");
+	break;
+    case MINI_SCREEN_POWER_FLAG:
+	activate_help ("msb-power.hlp");
+	break;
+    case MINI_SCREEN_FIRE_COVER:
+	activate_help ("msb-fire.hlp");
+	break;
+    case MINI_SCREEN_CRICKET_COVER:
+	activate_help ("msb-cricket.hlp");
+	break;
+    case MINI_SCREEN_HEALTH_COVER:
+	activate_help ("msb-health.hlp");
+	break;
+    case MINI_SCREEN_COAL_FLAG:
+	activate_help ("msb-coal.hlp");
+	break;
+    }
+}
+
+void
 mini_full_refresh (void)
 {
     Rect* mm = &scr.mini_map;
@@ -855,11 +980,17 @@ draw_mini_screen (void)
 	    if (MP_TYPE(x,y) == CST_USED) {
 		xx = MP_INFO(x,y).int_1;
 		yy = MP_INFO(x,y).int_2;
-		Fgl_setpixel (mm->x + x, mm->y + y,
-			      main_groups[MP_GROUP(xx,yy)].colour);
+
+		/* WCK: I think this is what is blowing up */
+		if ((xx < 0 || xx > WORLD_SIDE_LEN) ||
+		    (yy < 0 || yy > WORLD_SIDE_LEN)) {
+		  printf("Argh!  mini_screen out of range on CST_USED!\n");
+		  printf("xx=%d,yy=%d.  Continuing\n",xx,yy);
+		}
+
+		Fgl_setpixel (mm->x + x, mm->y + y, main_groups[MP_GROUP(xx,yy)].colour);
 	    } else {
-		Fgl_setpixel (mm->x + x, mm->y + y,
-			      main_groups[MP_GROUP(x,y)].colour);
+		Fgl_setpixel (mm->x + x, mm->y + y,  main_groups[MP_GROUP(x,y)].colour);
 	    }
 	}
     }
@@ -1350,21 +1481,21 @@ draw_mini_screen_cursor (void)
     Fgl_hline (mini->x + main_screen_originx
 	       ,mini->y + main_screen_originy
 	       ,mini->x + main_screen_originx + mw->w / 16 - 1
-	       ,green (30));
+	       ,255);
     Fgl_hline (mini->x + main_screen_originx
 	       ,mini->y + main_screen_originy + mw->h / 16 - 1
 	       ,mini->x + main_screen_originx + mw->w / 16 - 1
-	       ,green (30));
+	       ,255);
     Fgl_line (mini->x + main_screen_originx
 	      ,mini->y + main_screen_originy
 	      ,mini->x + main_screen_originx
 	      ,mini->y + main_screen_originy + mw->h / 16 - 1
-	      ,green (30));
+	      ,255);
     Fgl_line (mini->x + main_screen_originx + mw->w / 16 - 1
 	      ,mini->y + main_screen_originy
 	      ,mini->x + main_screen_originx + mw->w / 16 - 1
 	      ,mini->y + main_screen_originy + mw->h / 16 - 1
-	      ,green (30));
+	      ,255);
 
 }
 
@@ -1671,17 +1802,27 @@ print_time_for_year (void)
 
 
     if (time_for_year > 3600.0)
-	sprintf (s, "%5.1f MINS/year  ", time_for_year / 60.0);
+	sprintf (s, "%s%5.1f MINS/year  V %s", 
+		 cheat_flag ? "TEST MODE" : "",
+		 time_for_year / 60.0, VERSION);
     else
-	sprintf (s, "%5.1f secs/year  V %s ", time_for_year, VERSION);
+	sprintf (s, "%s%5.1f secs/year  V %s ", 
+		 cheat_flag ? "TEST MODE" : "",
+		 time_for_year, VERSION);
     Fgl_write (b->x, b->y, s);
 }
+
+/* Write a message in the status area of the screen */
 
 void 
 status_message(char * message, int colour) 
 {
-    char s[50];
     Rect* b = &scr.status_message;
+
+    Fgl_fillbox(b->x, b->y, b->w, b->h, TEXT_BG_COLOUR);
+
+    if (message == NULL)
+	return;
 
     Fgl_write (b->x, b->y, message);
 #if defined (WIN32)
@@ -2020,7 +2161,9 @@ close_market_cb (void)
 
     /* when exiting market cb, stop the mouse repeating straight away */
     cs_mouse_button = LC_MOUSE_LEFTBUTTON;
+#ifdef MOUSE_REPEAT
     cs_mouse_button_repeat = real_time + 1000;
+#endif
 }
 
 void
@@ -2104,8 +2247,30 @@ close_port_cb (void)
     Fgl_putbox (mcb->x, mcb->y, mcb->w, mcb->h, market_cb_gbuf);
     /* when exiting port cb, stop the mouse repeating straight away */
     cs_mouse_button = LC_MOUSE_LEFTBUTTON;
+#ifdef MOUSE_REPEAT
     cs_mouse_button_repeat = real_time + 1000;
+#endif
 }
+
+#ifdef __dialbox_h__
+int
+yn_dial_box (char * s1, char * s2, char * s3, char *s4)
+{
+    int result;
+    result = dialog_box(red(10),7,
+			0,0,s1,
+			0,0,"",
+			0,0,s2,
+			0,0,s3,
+			0,0,s4,
+			1,'y',"Yes",
+			1,'n',"No");
+
+    return (result == 'y') ? 1 : 0;
+}
+
+#else
+
 
 int
 yn_dial_box (char *title, char *s1, char *s2, char *s3)
@@ -2117,7 +2282,10 @@ yn_dial_box (char *title, char *s1, char *s2, char *s3)
     unrequest_mappoint_stats ();
     unrequest_main_screen ();
 
-    cs_mouse_button_delay = 0;
+#ifdef MOUSE_REPEAT
+    cs_mouse_button_delay = 0; 
+#endif
+
     /* find len of longest string */
     if (strlen (s1) > w)
 	w = strlen (s1);
@@ -2129,10 +2297,11 @@ yn_dial_box (char *title, char *s1, char *s2, char *s3)
     if (w < 20)			/* min width */
 	w = 20;
     w *= 8;			/* convert chars to pixels */
-
-    x = (640 / 2) - (w / 2);
-    y = (480 / 2) - (8 * 9 / 2);
     h = 9 * 8;
+
+    x = (scr.client_w / 2) - (w / 2);
+    y = (scr.client_h / 2) - (h / 2);
+
     ss = (char *) malloc ((w + 16) * (h + 16) * sizeof (char));
     if (ss == 0) {
 	malloc_failure ();
@@ -2177,8 +2346,8 @@ yn_dial_box (char *title, char *s1, char *s2, char *s3)
     db_flag = 1;
     /* GCS FIX:  I'll bet this is the cause of the mouse droppings bug */
     /* shake the mouse a bit to make sure we have the correct cursor. */
-    cs_mouse_handler (0, -1, 0);
-    cs_mouse_handler (0, 1, 0);
+    //    cs_mouse_handler (0, -1, 0);
+    //    cs_mouse_handler (0, 1, 0);
     db_yesbox_clicked = 0;
     db_nobox_clicked = 0;
     db_yesbox_clicked = 0;
@@ -2209,8 +2378,8 @@ yn_dial_box (char *title, char *s1, char *s2, char *s3)
     Fgl_putbox (x - 8, y - 8, w + 16, h + 16, ss);
     redraw_mouse ();
     /* shake the mouse a bit to make sure we have the correct cursor. */
-    cs_mouse_handler (0, -1, 0);
-    cs_mouse_handler (0, 1, 0);
+    //    cs_mouse_handler (0, -1, 0);
+    //cs_mouse_handler (0, 1, 0);
 
     free (ss);
     /*
@@ -2220,7 +2389,9 @@ yn_dial_box (char *title, char *s1, char *s2, char *s3)
       // in the main loop!
     */
     reset_mouse_flag = 1;
+#ifdef MOUSE_REPEAT
     cs_mouse_button_repeat = real_time + 1000;
+#endif
 
     request_main_screen ();
 
@@ -2228,6 +2399,72 @@ yn_dial_box (char *title, char *s1, char *s2, char *s3)
 	return (1);
     return (0);
 }
+#endif // #ifdef __dialbox_h__
+
+#ifdef __dialbox_h__
+void
+ok_dial_box (char *fn, int good_bad, char *xs)
+{
+    FILE *inf;
+    struct stat statbuf;
+    int colour;
+    char * ss;
+    char s[100];
+    int retval;
+
+    if (suppress_ok_buttons != 0)
+	return;
+    if (good_bad == GOOD || good_bad == RESULTS)
+	colour = green (14);
+    else if (good_bad == BAD)
+	colour = red (12);
+    else
+	colour = white (12);
+    if (good_bad == RESULTS)
+	strcpy (s, fn);
+    else
+    {
+	strcpy (s, message_path);
+	strcat (s, fn);
+    }
+
+    if ((inf = fopen (s, "r")) == NULL)
+    {
+	printf ("Can't open message <%s> for OK dialog box\n", s);
+	strcpy (s, message_path);
+	strcat (s, "error.mes");
+	if ((inf = fopen (s, "r")) == NULL)
+	{
+	    fprintf (stderr,
+		     "Can't open default message <%s> either\n", s);
+	    fprintf (stderr, " ...it was not displayed");
+	    return;
+	}
+
+	stat(s,&statbuf);
+
+    } else 
+	stat(s,&statbuf);
+    
+
+    ss = (char *)lcalloc(statbuf.st_size + 1);
+    retval = fread(ss,sizeof(char),statbuf.st_size,inf);
+    ss[statbuf.st_size] = '\0';
+
+    if (xs != 0)
+	dialog_box(colour,3,
+		   0,0,ss,
+		   0,0,xs,
+		   2,' ',"OK");
+    else
+	dialog_box(colour,2,
+		   0,0,ss,
+		   2,' ',"OK");
+    fclose(inf);
+}
+
+#else
+
 
 void
 ok_dial_box (char *fn, int good_bad, char *xs)
@@ -2240,7 +2477,9 @@ ok_dial_box (char *fn, int good_bad, char *xs)
     unrequest_mappoint_stats ();
     unrequest_main_screen ();
 
+#ifdef MOUSE_REPEAT
     cs_mouse_button_delay = 0;
+#endif
     /* select which colour to draw the box in. */
     if (suppress_ok_buttons != 0)
 	return;
@@ -2260,40 +2499,36 @@ ok_dial_box (char *fn, int good_bad, char *xs)
     if ((inf = fopen (s, "r")) == NULL)
     {
 	printf ("Can't open message <%s> for OK dialog box\n", s);
-
-
 	strcpy (s, message_path);
 	strcat (s, "error.mes");
 	if ((inf = fopen (s, "r")) == NULL)
 	{
-	    fprintf (stderr
-		     ,"Can't open default message <%s> either\n", s);
+	    fprintf (stderr,
+		     "Can't open default message <%s> either\n", s);
 	    fprintf (stderr, " ...it was not displayed");
 	    return;
 	}
     }
     /* static 74*22 char array for the message info array */
     l = 0;
-    while (feof (inf) == 0 && l < 20)
-    {
+    while (feof (inf) == 0 && l < 20) {
 	if (fgets (okmessage[l], 70, inf) == 0)
 	    break;
 	l++;
     }
     fclose (inf);
-    if (xs != 0)
-    {
+    if (xs != 0) {
 	strncpy (okmessage[l], xs, 70);
 	l++;
     }
     /* 'l' is now the number of lines. Work out the height of the box. */
-    h = (l + 3) * 10;		/* half a line above and below the title, 2 lines */
-    /* for the ok button. 10 pixels per line */
+    /* Need half a line above and below the title and 2 lines for the 
+       ok button.  10 pixels per line. */
+    h = (l + 3) * 10;
 
+    /* Get rid of new line and work out the width of the longest line. */
     w = 0;
-    /* Get rid of new line and work out the width of the logest line. */
-    for (i = 0; i < l; i++)
-    {
+    for (i = 0; i < l; i++) {
 	/* get rid of the newline */
 	if (okmessage[i][strlen (okmessage[i]) - 1] == 0xa)
 	    okmessage[i][strlen (okmessage[i]) - 1] = 0;
@@ -2301,10 +2536,10 @@ ok_dial_box (char *fn, int good_bad, char *xs)
 	    w = strlen (okmessage[i]);
     }
     w = (w + 2) * 8;		/* leave a space at either side. */
-    /* now we can work out the x and y points. */
 
-    x = (640 / 2) - (w / 2);
-    y = (480 / 2) - (h / 2);
+    /* now we can work out the x and y points. */
+    x = (scr.client_w / 2) - (w / 2);
+    y = (scr.client_h / 2) - (h / 2);
     ss = (char *) malloc ((w + 16) * (h + 16) * sizeof (char));
     if (ss == 0)
     {
@@ -2313,8 +2548,7 @@ ok_dial_box (char *fn, int good_bad, char *xs)
     hide_mouse ();
     Fgl_getbox (x - 8, y - 8, w + 16, h + 16, ss);
     Fgl_fillbox (x, y, w, h, colour);
-    for (i = 1; i < 8; i++)
-    {
+    for (i = 1; i < 8; i++) {
 	Fgl_hline (x - i, y - i, x + w + i - 1, colour + i + i);
 	Fgl_hline (x - i, y + h + i - 1, x + w + i - 1, colour + i + i);
 	Fgl_line (x - i, y - i, x - i, y + h + i - 1, colour + i + i);
@@ -2343,8 +2577,8 @@ ok_dial_box (char *fn, int good_bad, char *xs)
     redraw_mouse ();
     db_okflag = 1;
     /* shake the mouse a bit to make sure we have the correct cursor. */
-    cs_mouse_handler (0, -1, 0);
-    cs_mouse_handler (0, 1, 0);
+    //    cs_mouse_handler (0, -1, 0);
+    //    cs_mouse_handler (0, 1, 0);
 
 #if defined (LC_X11) || defined (WIN32)
     call_event ();
@@ -2383,41 +2617,45 @@ ok_dial_box (char *fn, int good_bad, char *xs)
     Fgl_putbox (x - 8, y - 8, w + 16, h + 16, ss);
     redraw_mouse ();
     /* shake the mouse a bit to make sure we have the correct cursor. */
-    cs_mouse_handler (0, -1, 0);
-    cs_mouse_handler (0, 1, 0);
+    //    cs_mouse_handler (0, -1, 0);
+    //    cs_mouse_handler (0, 1, 0);
 
     free (ss);
     /* when exiting dial box, stop the mouse repeating straight away */
     reset_mouse_flag = 1;
+#ifdef MOUSE_REPEAT
     cs_mouse_button_repeat = real_time + 1000;
+#endif
 
     request_main_screen ();
 }
+
+#endif // #ifdef __dialbox_h__
 
 void
 order_select_buttons (void)
 {
     /* sbut converts a group into a column major index of the button array. */
-    sbut[0] = 16;			/* buldoze */
-    sbut[1] = 13;			/* powerline */
-    sbut[2] = 15;			/* solar power */
-    sbut[3] = 14;			/* substation */
-    sbut[4] = 0;			/* residence */
-    sbut[5] = 1;			/* farm */
-    sbut[6] = 2;			/* market */
-    sbut[7] = 19;			/* track */
-    sbut[8] = 10;			/* coalmine */
-    sbut[9] = 28;			/* rail */
+    sbut[0] = 16;		/* buldoze */
+    sbut[1] = 13;		/* powerline */
+    sbut[2] = 15;		/* solar power */
+    sbut[3] = 14;		/* substation */
+    sbut[4] = 0;		/* residence */
+    sbut[5] = 1;		/* farm */
+    sbut[6] = 2;		/* market */
+    sbut[7] = 19;		/* track */
+    sbut[8] = 10;		/* coalmine */
+    sbut[9] = 28;		/* rail */
     sbut[10] = 29;		/* coal power */
     sbut[11] = 25;		/* road */
     sbut[12] = 27;		/* light industry */
     sbut[13] = 11;		/* university */
-    sbut[14] = 3;			/* commune */
-    sbut[15] = 4;			/* oremine */
-    sbut[16] = 5;			/* tip */
-    sbut[17] = 9;			/* export */
+    sbut[14] = 3;		/* commune */
+    sbut[15] = 4;		/* oremine */
+    sbut[16] = 5;		/* tip */
+    sbut[17] = 9;		/* export */
     sbut[18] = 12;		/* heavy industry */
-    sbut[19] = 6;			/* parkland */
+    sbut[19] = 6;		/* parkland */
     sbut[20] = 30;		/* recycle */
     sbut[21] = 20;		/* water */
     sbut[22] = 26;		/* health */
@@ -2426,10 +2664,10 @@ order_select_buttons (void)
     sbut[25] = 17;		/* monument */
     sbut[26] = 21;		/* school */
     sbut[27] = 22;		/* blacksmith */
-    sbut[28] = 8;			/* mill */
+    sbut[28] = 8;		/* mill */
     sbut[29] = 18;		/* pottery */
     sbut[30] = 23;		/* fire station */
-    sbut[31] = 7;			/* cricket  */
+    sbut[31] = 7;		/* cricket  */
 }
 
 int
@@ -2462,6 +2700,7 @@ call_select_change_up (int button)
     else if (button == GROUP_COAL_POWER)
 	ok_dial_box ("coalpowerup.mes", GOOD, 0L);
     else if (button == (GROUP_SOLAR_POWER - 1))
+      /* XXX: */
 	/* -1 a hack to make it work. Really dirty :( 
 	   Caused by the fact that groups and buttons are different until 
 	   after the bulldoze button, then they are the same.
