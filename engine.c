@@ -13,12 +13,31 @@
 #include "engglobs.h"
 #include "cliglobs.h"
 #include "simulate.h"
-#include "sernet.h"
-#include "clistubs.h"
+/*#include "sernet.h"*/
+/*#include "clistubs.h"*/
 #include "lcintl.h"
 #include "power.h"
+#include "mouse.h"
+#include "module_buttons.h"
+#include "pbar.h"
+#include "stats.h"
+#include "mps.h"
+#include "screen.h"
 
 extern int selected_type_cost;
+
+int 
+adjust_money(int value)
+{
+    total_money += value;
+    print_total_money();
+    mappoint_stats(-3,-3,-3);
+    update_pbar (PMONEY, total_money, 0);
+    refresh_pbars(); /* This could be more specific */
+    return total_money;
+}
+
+int is_real_river (int x, int y);
 
 int
 no_credit_build (int selected_group)
@@ -59,7 +78,7 @@ no_credit_build (int selected_group)
 }
 
 int 
-engine_place_item (int x, int y, short type)
+place_item (int x, int y, short type)
 {
     int group;
     int size;
@@ -140,14 +159,13 @@ engine_place_item (int x, int y, short type)
 
     connect_transport (x-2,y-2,x+size+1,y+size+1);
 
-    selected_type_cost = get_type_cost (type);
-    total_money -= selected_type_cost;
+    adjust_money(-selected_module_cost);
     map_power_grid();
     return 0;
 }
 
 int 
-engine_bulldoze_item (int x, int y)
+bulldoze_item (int x, int y)
 {
     int g, size;
 
@@ -165,7 +183,7 @@ engine_bulldoze_item (int x, int y)
     }
     else if (g == GROUP_SHANTY) {
 	fire_area (x, y);
-	total_money -= GROUP_SHANTY_BUL_COST;
+	adjust_money(-GROUP_SHANTY_BUL_COST);
     }
     else if (g == GROUP_FIRE) {
 	if (MP_INFO(x,y).int_2 >= FIRE_LENGTH)
@@ -173,10 +191,10 @@ engine_bulldoze_item (int x, int y)
 	MP_INFO(x,y).int_2 = FIRE_LENGTH + 1;
 	MP_TYPE(x,y) = CST_FIRE_DONE1;
 	MP_GROUP(x,y) = GROUP_BURNT;
-	total_money -= GROUP_BURNT_BUL_COST;
+	adjust_money(-GROUP_BURNT_BUL_COST);
     }
     else {
-	total_money -= main_groups[g].bul_cost;
+	adjust_money(-main_groups[g].bul_cost);
 	do_bulldoze_area (CST_GREEN, x, y);
 	if (g == GROUP_OREMINE)
 	{
@@ -187,9 +205,6 @@ engine_bulldoze_item (int x, int y)
 			do_bulldoze_area (CST_WATER, x + i, y + j);
 	}
     }
-
-    broadcast_map_types_region (x, y, size);
-
     return size;  /* No longer used... */
 }
 
@@ -447,7 +462,6 @@ do_residence (int x, int y)
     MP_INFO(x,y).int_4 = brm;
     MP_INFO(x,y).int_5 = drm;
 }
-
 
 
 void
@@ -772,6 +786,7 @@ do_industry_h (int x, int y)
      // int_4 is the coal in store
      // int_5 is the percent max production last month
      // int_6 is the time of the next animation frame.
+     // int_7 is whether we get power from coal (1) or elsewhere (0)
    */
 
   /* See if there's any raw materials (ore) on the road/rail. If so, use some
@@ -842,6 +857,7 @@ do_industry_h (int x, int y)
   ore_used += steel * ORE_MAKE_STEEL;
   /* check there was enough electricity, or back up to 1/10 of the 
      production. ie same work and material useage for less production. 
+     If no real power, see if we have enough coal to generate electricity.
   */
   if (get_power (x, y, steel * POWER_MAKE_STEEL, 1) == 0)
     {
@@ -855,10 +871,14 @@ do_industry_h (int x, int y)
 	  MP_INFO(x,y).int_4 -= (steel * 2);
 	  coal_used += (steel * 2);
 	  MP_INFO(x,y).flags |= FLAG_POWERED;
+	  MP_INFO(x,y).int_7 = 1;
 	}
     }
-  else
-    MP_INFO(x,y).flags |= FLAG_POWERED;
+  else 
+    {
+      MP_INFO(x,y).flags |= FLAG_POWERED;
+      MP_INFO(x,y).int_7 = 0;
+    }
   MP_INFO(x,y).int_1 += steel;
   MP_INFO(x,y).int_2 += steel;
   /* now sell the steel to the road/rail */
@@ -1548,7 +1568,6 @@ do_oremine (int x, int y)
 	{
 	  do_bulldoze_area (CST_WATER, x, y);
 	  connect_rivers ();
-	  broadcast_map_types_region (x, y, 4);
 	  refresh_main_screen ();
 	}
     }
@@ -1616,7 +1635,6 @@ do_commune (int x, int y)
       else if (MP_TYPE(x,y) <= CST_COMMUNE_7)
 	MP_TYPE(x,y) += 7;
       if (MP_INFO(x,y).int_3 > 0)	/*  >0% */
-
 	{
 	  MP_INFO(x,y).int_3 = 0;
 	  if (--MP_INFO(x,y).int_4 < 0)
@@ -1627,10 +1645,8 @@ do_commune (int x, int y)
 	  MP_INFO(x,y).int_3 = 0;
 	  MP_INFO(x,y).int_4++;
 	  if (MP_INFO(x,y).int_4 > 120)	/* 10 years */
-
 	    {
 	      do_bulldoze_area (CST_PARKLAND_PLANE, x, y);
-	      broadcast_map_types_region (x, y, 4);
 	      return;
 	    }
 	}
@@ -2419,9 +2435,8 @@ do_rocket_pad (int x, int y)
     else if (MP_INFO(x,y).int_4 >= (100 * ROCKET_PAD_LAUNCH) / 100) {
 	MP_TYPE(x,y) = CST_ROCKET_5;
 	update_main_screen ();
-	broadcast_rocket_built (x,y);
 	if (ask_launch_rocket_now (x,y)) {
-	    engine_launch_rocket (x,y);
+	    launch_rocket (x,y);
 	}
 	/* so we don't get get our money back when we bulldoze. */
 	if (x == last_built_x && y == last_built_y) {
@@ -2432,7 +2447,7 @@ do_rocket_pad (int x, int y)
 }
 
 void
-engine_launch_rocket (int x, int y)
+launch_rocket (int x, int y)
 {
     int i, r, xx, yy, xxx, yyy;
     rockets_launched++;
@@ -2441,7 +2456,7 @@ engine_launch_rocket (int x, int y)
     r = rand () % MAX_TECH_LEVEL;
     if (r > tech_level || rand () % 100 > (rockets_launched * 15 + 25)) {
 	/* the launch failed */
-	broadcast_rocket_fired (x, y, ROCKET_LAUNCH_BAD);
+	display_rocket_result_dialog (ROCKET_LAUNCH_BAD);
 	rockets_launched_success = 0;
 	xx = ((rand () % 40) - 20) + x;
 	yy = ((rand () % 40) - 20) + y;
@@ -2460,14 +2475,13 @@ engine_launch_rocket (int x, int y)
     } else {
 	rockets_launched_success++;
 	if (rockets_launched_success > 5) {
-	    broadcast_rocket_fired (x, y, ROCKET_LAUNCH_EVAC);
 	    remove_people (1000);
+	    display_rocket_result_dialog (ROCKET_LAUNCH_EVAC);
 	} else {
-	    broadcast_rocket_fired (x, y, ROCKET_LAUNCH_GOOD);
+	    display_rocket_result_dialog (ROCKET_LAUNCH_BAD);
 	}
     }
 }
-
 
 void
 remove_people (int num)
@@ -3218,9 +3232,6 @@ do_fire (int x, int y)
 	MP_TYPE(x,y) = CST_FIRE_DONE2;
       else
 	MP_TYPE(x,y) = CST_FIRE_DONE1;
-      if (old_type != MP_TYPE(x,y)) {
-	broadcast_map_types_region (x, y, 1);
-      }
       return;
     }
   MP_INFO(x,y).int_2++;
@@ -3425,8 +3436,6 @@ add_a_shanty (void)
       x = r % WORLD_SIDE_LEN;
     }
   set_mappoint (x, y, CST_SHANTY);
-  /* GCS FIX: Client can't update numof_shanties this way. */
-  broadcast_map_types_region (x, y, 2);
   numof_shanties++;
 }
 
@@ -3702,11 +3711,12 @@ is_real_river (int x, int y)
   return (-1);
 }
 
+/* Feature: coal survey should vary in price and accuracy with technology */
 void 
-engine_do_coal_survey (void)
+do_coal_survey (void)
 {
     if (coal_survey_done == 0) {
-	total_money -= 1000000;
+	adjust_money(-1000000);
 	coal_survey_done = 1;
     }
 }

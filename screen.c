@@ -7,13 +7,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#if defined (HAVE_UNISTD_H)
+#include <unistd.h>
+#endif
 #include "lcstring.h"
 #include "common.h"
 #include "lctypes.h"
 #include "lin-city.h"
 #include "screen.h"
 #include "engglobs.h"
-#include "clistubs.h"
+#include "cliglobs.h"
 #include "pixmap.h"
 #include "lchelp.h"
 #include "mouse.h"
@@ -21,14 +26,16 @@
 #include "lcintl.h"
 #include "ldsvgui.h"
 #include "pbar.h"
+#include "dialbox.h"
+#include "lclib.h"
+#include "module_buttons.h"
+#include "stats.h"
+#include "engine.h"
 
 /* ---------------------------------------------------------------------- *
  * External Global Variables
  * ---------------------------------------------------------------------- */
 extern int network_game;
-extern int tfood_in_markets, tjobs_in_markets;
-extern int tcoal_in_markets, tgoods_in_markets;
-extern int tore_in_markets, tsteel_in_markets;
 extern int time_multiplex_stats;
 
 /* ---------------------------------------------------------------------- *
@@ -42,6 +49,8 @@ Update_Scoreboard update_scoreboard;
 
 int monthgraph_style = MONTHGRAPH_STYLE_MIN;
 int mps_global_style = MPS_GLOBAL_STYLE_MIN;
+
+char screen_refreshing = 0; 
 
 /* ---------------------------------------------------------------------- *
  * Private Global Variables
@@ -59,14 +68,22 @@ void print_time_for_year (void);
 void calculate_time_for_year (void);
 void clear_monthgraph (void);
 void draw_ms_buttons (void);
-void draw_select_buttons (void);
 static void do_monthgraph (int full_refresh);
 static void do_history_linegraph (int draw);
 static void do_sust_barchart (int draw);
 static void draw_sustline (int yoffset, int count, int max, int col);
 void monthgraph_full_refresh (void);
-
+void draw_mini_pol_in_main_win ();
 void mini_full_refresh (void);
+void update_main_screen_normal (void);
+void update_main_screen_pollution (void);
+void update_main_screen_ub40 (void);
+void update_main_screen_starve (void);
+void update_main_screen_power (void);
+void update_main_screen_fire_cover (void);
+void update_main_screen_cricket_cover (void);
+void update_main_screen_health_cover (void);
+void update_main_screen_coal (void);
 
 
 
@@ -76,9 +93,13 @@ void mini_full_refresh (void);
 void
 draw_background (void)
 {
-  /* XXX: we don't need to draw the whole background! */
+    /* XXX: we don't need to draw the whole background! */
+    /* GCS: but this routine is only called on a full refresh, so it's OK */
 #if defined (LC_X11) || defined (WIN32)
-    /* Still need to add code here to draw border region */
+    /* Draw border region, but don't put into pixmap */
+    draw_border ();
+
+    /* Draw main area */
     Fgl_fillbox (0, 0, pixmap_width, pixmap_height, TEXT_BG_COLOUR);
 #else /* SVGALIB */
     Fgl_fillbox (0, 0, 640, 480, TEXT_BG_COLOUR);
@@ -89,15 +110,14 @@ void
 refresh_main_screen ()
 {
     Rect* b = &scr.main_win;
-    if (!(market_cb_flag || port_cb_flag))
-    /* XXX: Don't resize the screen now! */
-    {
-	connect_transport (main_screen_originx, main_screen_originy,
-			   b->w / 16, b->h / 16);
-	screen_refresh_flag = 1;
-	update_main_screen ();
-	update_mini_screen ();
-    }
+
+    connect_transport (main_screen_originx, main_screen_originy,
+		       b->w / 16, b->h / 16);
+    screen_refresh_flag++;
+    update_main_screen ();
+    update_mini_screen ();
+    dialog_refresh();
+    screen_refresh_flag--;
 }
 
 void 
@@ -115,9 +135,70 @@ unclip_main_window ()
 }
 
 void
+rotate_main_screen (void)
+{
+    if (main_screen_flag == MAIN_SCREEN_NORMAL_FLAG) {
+	main_screen_flag = MAIN_SCREEN_EQUALS_MINI;
+    } else {
+	main_screen_flag = MAIN_SCREEN_NORMAL_FLAG;
+    }
+    refresh_main_screen ();
+}
+
+void 
 update_main_screen (void)
 {
-    Rect* b = &scr.main_win;
+    if (main_screen_flag == MAIN_SCREEN_NORMAL_FLAG) {
+	update_main_screen_normal ();
+    } else {
+	switch (mini_screen_flags) {
+	case MINI_SCREEN_NORMAL_FLAG:
+	    update_main_screen_normal ();
+	    break;
+	case MINI_SCREEN_POL_FLAG:
+	    update_main_screen_pollution ();
+	    break;
+	case MINI_SCREEN_UB40_FLAG:
+	    update_main_screen_ub40 ();
+	    break;
+	case MINI_SCREEN_STARVE_FLAG:
+	    update_main_screen_starve ();
+	    break;
+	case MINI_SCREEN_POWER_FLAG:
+	    update_main_screen_power ();
+	    break;
+	case MINI_SCREEN_FIRE_COVER:
+	    update_main_screen_fire_cover ();
+	    break;
+	case MINI_SCREEN_CRICKET_COVER:
+	    update_main_screen_cricket_cover ();
+	    break;
+	case MINI_SCREEN_HEALTH_COVER:
+	    update_main_screen_health_cover ();
+	    break;
+	case MINI_SCREEN_COAL_FLAG:
+	    if (coal_survey_done) {
+		update_main_screen_coal ();
+	    } else {
+		update_main_screen_normal ();
+	    }
+	    break;
+	}
+    }
+#if defined (WIN32)
+    if (screen_refresh_flag) {
+	UpdateWindow (display.hWnd);
+    }
+#else
+    if (mouse_type == MOUSE_TYPE_SQUARE)
+	redraw_mouse ();
+#endif
+}
+
+void
+update_main_screen_normal (void)
+{
+    Rect* mw = &scr.main_win;
     int x, y, xm, ym;
     short typ, grp;
 #ifdef USE_PIXMAPS
@@ -129,6 +210,10 @@ update_main_screen (void)
 #endif
     if (help_flag || load_flag || save_flag)
 	return;
+
+    /* GCS: I moved the code to reset the main_screen_origin to the 
+       function load_city(), where I think is more appropriate. */
+
     xm = main_screen_originx;
     if (xm > 3)
 	xm = 3;
@@ -141,9 +226,9 @@ update_main_screen (void)
 #endif
     clip_main_window ();
     for (y = main_screen_originy - ym; y < main_screen_originy
-		 + (b->h / 16); y++)
+		 + (mw->h / 16); y++)
 	for (x = main_screen_originx - xm; x < main_screen_originx
-		     + (b->w / 16); x++)
+		     + (mw->w / 16); x++)
 	{
 	    typ = MP_TYPE(x,y);
 	    if (typ != mappointoldtype[x][y] || screen_refresh_flag)
@@ -162,14 +247,14 @@ update_main_screen (void)
 		    if (y < main_screen_originy)
 			y1 = (main_screen_originy - y) * 16;
 		    sx = sy = main_groups[grp].size;
-		    if ((sx + x) > (main_screen_originx + (b->w / 16)))
-			sx = (main_screen_originx + (b->w / 16)) - x;
-		    if ((sy + y) > (main_screen_originy + (b->h / 16)))
-			sy = (main_screen_originy + (b->h / 16)) - y;
+		    if ((sx + x) > (main_screen_originx + (mw->w / 16)))
+			sx = (main_screen_originx + (mw->w / 16)) - x;
+		    if ((sy + y) > (main_screen_originy + (mw->h / 16)))
+			sy = (main_screen_originy + (mw->h / 16)) - y;
 		    sx = (sx << 4) - x1;
 		    sy = (sy << 4) - y1;
-		    dx = b->x + (x - main_screen_originx) * 16 + x1;
-		    dy = b->y + (y - main_screen_originy) * 16 + y1;
+		    dx = mw->x + (x - main_screen_originx) * 16 + x1;
+		    dy = mw->y + (y - main_screen_originy) * 16 + y1;
 		    if (sx > 0 && sy > 0)
 		    {
 #if defined (LC_X11)
@@ -195,31 +280,264 @@ update_main_screen (void)
 			update_pixmap (x1, y1, sx, sy, dx, dy,
 				       main_groups[grp].size,
 				       main_types[typ].graphic);
+
 		    }
 		}
 		else
 #endif /* USE_PIXMAPS */
-		    Fgl_putbox (b->x + (x - main_screen_originx) * 16,
-				b->y + (y - main_screen_originy) * 16,
+		    Fgl_putbox (mw->x + (x - main_screen_originx) * 16,
+				mw->y + (y - main_screen_originy) * 16,
 				16 * main_groups[grp].size,
 				16 * main_groups[grp].size,
-				main_types[typ].graphic);
+				main_types[typ].graphic); 
 	    }
 	}
     unclip_main_window ();
-#if defined (WIN32)
-    if (screen_refresh_flag)
-    {
-	UpdateWindow (display.hWnd);
-    }
-#else
-    if (mouse_type == MOUSE_TYPE_SQUARE)
-	redraw_mouse ();
-#endif
-    screen_refresh_flag = 0;
 }
 
+void
+update_main_screen_pollution (void)
+{
+    Rect* mw = &scr.main_win;
+    int x, y, col;
+
+    for (y = main_screen_originy;
+	 y < main_screen_originy + (mw->h / 16); y++) {
+	for (x = main_screen_originx;
+	     x < main_screen_originx + (mw->w / 16); x++) {
+	    if (MP_POL(x,y) < 4) {
+		col = green (24);
+	    } else if (MP_POL(x,y) < 600) {
+		col = green (23 - (MP_POL(x,y) / 45));
+	    } else {
+		col = (int) sqrt ((float) (MP_POL(x,y) - 600)) / 9;
+		if (col > 20)
+		    col = 20;
+		col += red (11);
+	    }
+	    Fgl_fillbox (mw->x + (x - main_screen_originx) * 16,
+			 mw->y + (y - main_screen_originy) * 16,
+			 16, 16, col);
+	}
+    }
+}
+
+void 
+update_main_screen_ub40 (void)
+{
+    Rect* mw = &scr.main_win;
+    int x, y, col;
+
+    for (y = main_screen_originy;
+	 y < main_screen_originy + (mw->h / 16); y++) {
+	for (x = main_screen_originx;
+	     x < main_screen_originx + (mw->w / 16); x++) {
+	    int xx = x;
+	    int yy = y;
+	    if (MP_TYPE(x,y) == CST_USED) {
+		xx = MP_INFO(x,y).int_1;
+		yy = MP_INFO(x,y).int_2;
+	    }
+	    if (MP_GROUP_IS_RESIDENCE(xx,yy)) {
+		if (MP_INFO(xx,yy).int_1 < -20)
+		    col = red (28);
+		else if (MP_INFO(xx,yy).int_1 < 10)
+		    col = red (14);
+		else
+		    col = green (20);
+	    } else {
+		col = green (14);
+	    }
+	    Fgl_fillbox (mw->x + (x - main_screen_originx) * 16,
+			 mw->y + (y - main_screen_originy) * 16,
+			 16, 16, col);
+	}
+    }
+}
+
+void 
+update_main_screen_starve (void)
+{
+    Rect* mw = &scr.main_win;
+    int x, y, col;
+
+    for (y = main_screen_originy;
+	 y < main_screen_originy + (mw->h / 16); y++) {
+	for (x = main_screen_originx;
+	     x < main_screen_originx + (mw->w / 16); x++) {
+	    int xx = x;
+	    int yy = y;
+	    if (MP_TYPE(x,y) == CST_USED) {
+		xx = MP_INFO(x,y).int_1;
+		yy = MP_INFO(x,y).int_2;
+	    }
+	    if (MP_GROUP_IS_RESIDENCE(xx,yy)) {
+		if ((total_time - MP_INFO(x,y).int_2) < 20)
+		    col = red (28);
+		else if ((total_time - MP_INFO(x,y).int_2) < 100)
+		    col = red (14);
+		else
+		    col = green (20);
+	    } else {
+		col = green (14);
+	    }
+	    Fgl_fillbox (mw->x + (x - main_screen_originx) * 16,
+			 mw->y + (y - main_screen_originy) * 16,
+			 16, 16, col);
+	}
+    }
+}
+
+void 
+update_main_screen_power (void)
+{
+    Rect* mw = &scr.main_win;
+    int x, y, col;
+
+    for (y = main_screen_originy;
+	 y < main_screen_originy + (mw->h / 16); y++) {
+	for (x = main_screen_originx;
+	     x < main_screen_originx + (mw->w / 16); x++) {
+	    int xx = x;
+	    int yy = y;
+	    int grp;
+	    if (MP_TYPE(x,y) == CST_USED) {
+		xx = MP_INFO(x,y).int_1;
+		yy = MP_INFO(x,y).int_2;
+	    }
+	    if (get_power (xx, yy, 1, 1) != 0) {
+		col = green (14);
+	    } else if (get_power (xx, yy, 1, 0) != 0) {
+		col = green (10);
+	    } else {
+		// col = MP_COLOR(xx,yy);
+		col = green (20);
+	    }
+	    Fgl_fillbox (mw->x + (x - main_screen_originx) * 16,
+			 mw->y + (y - main_screen_originy) * 16,
+			 16, 16, col);
+	}
+    }
+}
+
+void 
+update_main_screen_fire_cover (void)
+{
+    Rect* mw = &scr.main_win;
+    int x, y, col;
+
+    for (y = main_screen_originy;
+	 y < main_screen_originy + (mw->h / 16); y++) {
+	for (x = main_screen_originx;
+	     x < main_screen_originx + (mw->w / 16); x++) {
+	    int xx = x;
+	    int yy = y;
+	    int grp;
+	    if (MP_TYPE(x,y) == CST_USED) {
+		xx = MP_INFO(x,y).int_1;
+		yy = MP_INFO(x,y).int_2;
+	    }
+
+	    if ((MP_INFO(xx,yy).flags & FLAG_FIRE_COVER) == 0)
+		// col = MP_COLOR(xx,yy);
+		col = green (20);
+	    else
+		col = green (10);
+	    Fgl_fillbox (mw->x + (x - main_screen_originx) * 16,
+			 mw->y + (y - main_screen_originy) * 16,
+			 16, 16, col);
+	}
+    }
+}
+
+void 
+update_main_screen_health_cover (void)
+{
+    Rect* mw = &scr.main_win;
+    int x, y, col;
+
+    for (y = main_screen_originy;
+	 y < main_screen_originy + (mw->h / 16); y++) {
+	for (x = main_screen_originx;
+	     x < main_screen_originx + (mw->w / 16); x++) {
+	    int xx = x;
+	    int yy = y;
+	    int grp;
+	    if (MP_TYPE(x,y) == CST_USED) {
+		xx = MP_INFO(x,y).int_1;
+		yy = MP_INFO(x,y).int_2;
+	    }
+	    if ((MP_INFO(xx,yy).flags & FLAG_HEALTH_COVER) == 0)
+		// col = MP_COLOR(xx,yy);
+		col = green (20);
+	    else
+		col = green (10);
+	    Fgl_fillbox (mw->x + (x - main_screen_originx) * 16,
+			 mw->y + (y - main_screen_originy) * 16,
+			 16, 16, col);
+	}
+    }
+}
+
+void 
+update_main_screen_cricket_cover (void)
+{
+    Rect* mw = &scr.main_win;
+    int x, y, col;
+
+    for (y = main_screen_originy;
+	 y < main_screen_originy + (mw->h / 16); y++) {
+	for (x = main_screen_originx;
+	     x < main_screen_originx + (mw->w / 16); x++) {
+	    int xx = x;
+	    int yy = y;
+	    int grp;
+	    if (MP_TYPE(x,y) == CST_USED) {
+		xx = MP_INFO(x,y).int_1;
+		yy = MP_INFO(x,y).int_2;
+	    }
+	    if ((MP_INFO(xx,yy).flags & FLAG_CRICKET_COVER) == 0)
+		// col = MP_COLOR(xx,yy);
+		col = green (20);
+	    else
+		col = green (10);
+	    Fgl_fillbox (mw->x + (x - main_screen_originx) * 16,
+			 mw->y + (y - main_screen_originy) * 16,
+			 16, 16, col);
+	}
+    }
+}
+
+void 
+update_main_screen_coal (void)
+{
+    Rect* mw = &scr.main_win;
+    int x, y, col;
+
+    for (y = main_screen_originy;
+	 y < main_screen_originy + (mw->h / 16); y++) {
+	for (x = main_screen_originx;
+	     x < main_screen_originx + (mw->w / 16); x++) {
+	    if (MP_INFO(x,y).coal_reserve == 0)
+		col = white (4);
+	    else if (MP_INFO(x,y).coal_reserve >= COAL_RESERVE_SIZE / 2)
+		col = white (18);
+	    else if (MP_INFO(x,y).coal_reserve < COAL_RESERVE_SIZE / 2)
+		col = white (28);
+	    Fgl_fillbox (mw->x + (x - main_screen_originx) * 16,
+			 mw->y + (y - main_screen_originy) * 16,
+			 16, 16, col);
+	}
+    }
+}
+
+
 /* *******************  SCREEN SETUP  ******************* */
+
+/* XXX: WCK: All of the drawing should be done already in screen_full_refresh;
+   Why do it here? */
+/* GCS: Actually, this function loads the graphics from disk */
+/* WCK: Yes, but it used to refresh everything after doing that. */
 void
 screen_setup (void)
 {
@@ -318,8 +636,11 @@ screen_setup (void)
 #endif
 
     /* Load and draw menu buttons */
+#if defined (commentout)
     menu_button_graphic = load_graphic ("menu-button.csi");
+#endif
     draw_menu ();
+    draw_help ();
 #if defined (commentout)
     load_button_graphic = load_graphic ("load-button.csi");
     draw_load ();
@@ -331,156 +652,20 @@ screen_setup (void)
     draw_help ();
 #endif
 
+#ifdef SCREEN_SETUP_DRAWS
     mini_full_refresh ();
 
     redraw_mouse ();
 
-    /* load select button graphics */
-    select_button_graphic[sbut[0]] = load_graphic ("buldoze-button.csi");
-    select_button_type[sbut[0]] = CST_GREEN;
-    strcpy (select_button_help[sbut[0]], "bulldoze.hlp");
-
-    select_button_graphic[sbut[1]] = load_graphic ("powerline-button.csi");
-    select_button_type[sbut[1]] = CST_POWERL_H_L;
-    strcpy (select_button_help[sbut[1]], "powerline.hlp");
-
-    select_button_graphic[sbut[2]] = load_graphic ("powerssolar-button.csi");
-    select_button_type[sbut[2]] = CST_POWERS_SOLAR;
-    strcpy (select_button_help[sbut[2]], "powerssolar.hlp");
-
-    select_button_graphic[sbut[3]] = load_graphic ("substation-button.csi");
-    select_button_type[sbut[3]] = CST_SUBSTATION_R;
-    strcpy (select_button_help[sbut[3]], "substation.hlp");
-
-    select_button_graphic[sbut[4]] = load_graphic ("residence-button.csi");
-    select_button_type[sbut[4]] = CST_RESIDENCE_LL;
-    strcpy (select_button_help[sbut[4]], "residential.hlp");
-
-    select_button_graphic[sbut[5]] = load_graphic ("organic-farm-button.csi");
-    select_button_type[sbut[5]] = CST_FARM_O0;
-    strcpy (select_button_help[sbut[5]], "farm.hlp");
-
-    select_button_graphic[sbut[6]] = load_graphic ("market-button.csi");
-    select_button_type[sbut[6]] = CST_MARKET_EMPTY;
-    strcpy (select_button_help[sbut[6]], "market.hlp");
-
-    select_button_help_flag[sbut[7]] = 1;        /* No help for track */
-    select_button_graphic[sbut[7]] = load_graphic ("track-button.csi");
-    select_button_type[sbut[7]] = CST_TRACK_LR;
-    strcpy (select_button_help[sbut[7]], "track.hlp");
-
-    select_button_graphic[sbut[8]] = load_graphic ("coalmine-button.csi");
-    select_button_type[sbut[8]] = CST_COALMINE_EMPTY;
-    strcpy (select_button_help[sbut[8]], "coalmine.hlp");
-
-    select_button_graphic[sbut[9]] = load_graphic ("rail-button.csi");
-    select_button_type[sbut[9]] = CST_RAIL_LR;
-    strcpy (select_button_help[sbut[9]], "rail.hlp");
-
-    select_button_graphic[sbut[10]] = load_graphic ("powerscoal-button.csi");
-    select_button_type[sbut[10]] = CST_POWERS_COAL_EMPTY;
-    strcpy (select_button_help[sbut[10]], "powerscoal.hlp");
-
-    select_button_graphic[sbut[11]] = load_graphic ("road-button.csi");
-    select_button_type[sbut[11]] = CST_ROAD_LR;
-    strcpy (select_button_help[sbut[11]], "road.hlp");
-
-    select_button_graphic[sbut[12]] = load_graphic ("industryl-button.csi");
-    select_button_type[sbut[12]] = CST_INDUSTRY_L_C;
-    strcpy (select_button_help[sbut[12]], "industryl.hlp");
-
-    select_button_graphic[sbut[13]] = load_graphic ("university-button.csi");
-    select_button_type[sbut[13]] = CST_UNIVERSITY;
-    strcpy (select_button_help[sbut[13]], "university.hlp");
-
-    select_button_graphic[sbut[14]] = load_graphic ("commune-button.csi");
-    select_button_type[sbut[14]] = CST_COMMUNE_1;
-    strcpy (select_button_help[sbut[14]], "commune.hlp");
-
-    select_button_graphic[sbut[15]] = load_graphic ("oremine-button.csi");
-    select_button_type[sbut[15]] = CST_OREMINE_1;
-    strcpy (select_button_help[sbut[15]], "oremine.hlp");
-
-    select_button_graphic[sbut[16]] = load_graphic ("tip-button.csi");
-    select_button_type[sbut[16]] = CST_TIP_0;
-    strcpy (select_button_help[sbut[16]], "tip.hlp");
-
-    select_button_graphic[sbut[17]] = load_graphic ("port-button.csi");
-    select_button_type[sbut[17]] = CST_EX_PORT;
-    strcpy (select_button_help[sbut[17]], "port.hlp");
-
-    select_button_graphic[sbut[18]] = load_graphic ("industryh-button.csi");
-    select_button_type[sbut[18]] = CST_INDUSTRY_H_C;
-    strcpy (select_button_help[sbut[18]], "industryh.hlp");
-
-    select_button_graphic[sbut[19]] = load_graphic ("parkland-button.csi");
-    select_button_type[sbut[19]] = CST_PARKLAND_PLANE;
-    strcpy (select_button_help[sbut[19]], "park.hlp");
-
-    select_button_graphic[sbut[20]] = load_graphic ("recycle-button.csi");
-    select_button_type[sbut[20]] = CST_RECYCLE;
-    strcpy (select_button_help[sbut[20]], "recycle.hlp");
-
-    select_button_graphic[sbut[21]] = load_graphic ("water-button.csi");
-    select_button_type[sbut[21]] = CST_WATER;
-    strcpy (select_button_help[sbut[21]], "river.hlp");
-
-    select_button_graphic[sbut[22]] = load_graphic ("health-button.csi");
-    select_button_type[sbut[22]] = CST_HEALTH;
-    strcpy (select_button_help[sbut[22]], "health.hlp");
-
-    select_button_graphic[sbut[23]] = load_graphic ("rocket-button.csi");
-    select_button_type[sbut[23]] = CST_ROCKET_1;
-    strcpy (select_button_help[sbut[23]], "rocket.hlp");
-
-    select_button_graphic[sbut[24]] = load_graphic ("windmill-button.csi");
-    select_button_type[sbut[24]] = CST_WINDMILL_1_R;
-    strcpy (select_button_help[sbut[24]], "windmill.hlp");
-
-    select_button_graphic[sbut[25]] = load_graphic ("monument-button.csi");
-    select_button_type[sbut[25]] = CST_MONUMENT_0;
-    strcpy (select_button_help[sbut[25]], "monument.hlp");
-
-    select_button_graphic[sbut[26]] = load_graphic ("school-button.csi");
-    select_button_type[sbut[26]] = CST_SCHOOL;
-    strcpy (select_button_help[sbut[26]], "school.hlp");
-
-    select_button_graphic[sbut[27]] = load_graphic ("blacksmith-button.csi");
-    select_button_type[sbut[27]] = CST_BLACKSMITH_0;
-    strcpy (select_button_help[sbut[27]], "blacksmith.hlp");
-
-    select_button_graphic[sbut[28]] = load_graphic ("mill-button.csi");
-    select_button_type[sbut[28]] = CST_MILL_0;
-    strcpy (select_button_help[sbut[28]], "mill.hlp");
-
-    select_button_graphic[sbut[29]] = load_graphic ("pottery-button.csi");
-    select_button_type[sbut[29]] = CST_POTTERY_0;
-    strcpy (select_button_help[sbut[29]], "pottery.hlp");
-
-    select_button_graphic[sbut[30]] = load_graphic ("firestation-button.csi");
-    select_button_type[sbut[30]] = CST_FIRESTATION_1;
-    strcpy (select_button_help[sbut[30]], "firestation.hlp");
-
-    select_button_graphic[sbut[31]] = load_graphic ("cricket-button.csi");
-    select_button_type[sbut[31]] = CST_CRICKET_1;
-    strcpy (select_button_help[sbut[31]], "cricket.hlp");
-
-    draw_select_buttons ();
-
-    /* disable all the buttons 
-       then enable the ones that are available at the start
-    */
-    for (i = 0; i < NUMOF_SELECT_BUTTONS; i++) {
-	select_button_tflag[i] = 0;
-    }
-
-    update_select_buttons ();
     update_main_screen ();
+#endif
+
 }
 
 void
 screen_full_refresh (void)
 {
+    screen_refreshing++;
     draw_background ();
 
     monthgraph_full_refresh ();
@@ -489,12 +674,13 @@ screen_full_refresh (void)
     mini_full_refresh ();
 
     /* GCS FIX: what about during MT? */
-    if (selected_type == CST_GREEN)
+    if (selected_module_type == CST_GREEN)
 	draw_main_window_box (red (8));
     else
 	draw_main_window_box (green (8));
 
     draw_menu ();
+    draw_help ();
 #if defined (commentout)
     draw_load ();
     draw_save ();
@@ -505,17 +691,26 @@ screen_full_refresh (void)
     draw_slow (slow_flag & !pause_flag);
     draw_med (med_flag & !pause_flag);
     draw_fast (fast_flag & !pause_flag);
+    draw_results ();
 
-    draw_select_buttons ();
+    draw_modules ();
 
     /* GCS:  What about resize during load/save/prefs? */
+    /* WCK:  We could just lock resize off when we enter them. */
     if (help_flag) {
 	refresh_help_page ();
     }
     refresh_main_screen ();
+
+/*  Text status area */
     print_date();
     print_time_for_year();
+    print_total_money();
+    draw_selected_module_cost();
+
     refresh_pbars();
+    redraw_mouse();  /* screen_setup used to do this */
+    screen_refreshing--;
 }
 
 #if defined (commentout)
@@ -536,52 +731,6 @@ draw_ms_buttons (void)
     draw_ms_button (&scr.ms_ocost_button, ms_ocost_button_graphic);
 }
 #endif
-
-void
-draw_select_buttons (void)
-{
-    int i;
-    Rect* sbw = &scr.select_buttons;
-    Fgl_fillbox (sbw->x, sbw->y, sbw->w, sbw->h, white (20));
-
-    for (i = 0; i < NUMOF_SELECT_BUTTONS; i++) 
-      draw_select_button_graphic (sbut[i], select_button_graphic[sbut[i]]);
-
-    update_select_buttons ();
-}
-
-
-void
-update_select_buttons (void)
-{
-    int i, f;
-    for (i = 0; i < NUMOF_SELECT_BUTTONS; i++)
-    {
-	int g = inv_sbut(i);
-	f = select_button_tflag[i];
-	if (tech_level >= main_groups[g].tech * MAX_TECH_LEVEL/1000)
-	{
-	    if (select_button_tflag[i] == 0)
-		call_select_change_up (i);
-	    f = 1;
-	}
-	else if (select_button_tflag[i] != 0 &&
-		 tech_level
-                 < ((main_groups[g].tech - (main_groups[g].tech/10)) * MAX_TECH_LEVEL/1000) )
-	    f = 0;
-	if (select_button_tflag[i] != f)
-	{
-	    select_button_tflag[i] = f;
-	    draw_select_button_graphic (i, select_button_graphic[i]);
-	}
-    }
-    /* XXX: Why is this here? Should be with rest of tech gained messages! */
-    if (tech_level > MODERN_WINDMILL_TECH && modern_windmill_flag == 0)
-    {
-	ok_dial_box ("mod_wind_up.mes", GOOD, 0L);
-	modern_windmill_flag = 1;
-    }
-}
 
 void
 draw_main_window_box (int colour)
@@ -638,56 +787,6 @@ draw_small_yellow_bezel (int x, int y, int h, int w)
     }
 }
 
-#if !defined (LC_X11) && !defined (WIN32)
-void
-setcustompalette (void)
-{
-    char s[100];
-    int i, n, r, g, b, flag[256];
-    FILE *inf;
-    Palette pal;
-    for (i = 0; i < 256; i++)
-	flag[i] = 0;
-    if ((inf = fopen (colour_pal_file, "r")) == 0)
-    {
-	printf ("The colour palette file <%s>... ", colour_pal_file);
-	do_error ("Can't find it.");
-    }
-    while (feof (inf) == 0)
-    {
-	fgets (s, 99, inf);
-	if (sscanf (s, "%d %d %d %d", &n, &r, &g, &b) == 4)
-	{
-	    pal.color[n].red = r;
-	    pal.color[n].green = g;
-	    pal.color[n].blue = b;
-	    flag[n] = 1;
-	}
-    }
-    fclose (inf);
-    for (i = 0; i < 256; i++)
-    {
-	if (flag[i] == 0)
-	{
-	    printf ("Colour %d not loaded\n", i);
-	    do_error ("Can't continue");
-	}
-	pal.color[i].red = (unsigned char) ((pal.color[i].red
-					     * (1 - gamma_correct_red)) + (64 * sin ((float) pal.color[i].red
-										     * M_PI / 128)) * gamma_correct_red);
-
-	pal.color[i].green = (unsigned char) ((pal.color[i].green
-					       * (1 - gamma_correct_green)) + (64 * sin ((float) pal.color[i].green
-											 * M_PI / 128)) * gamma_correct_green);
-
-	pal.color[i].blue = (unsigned char) ((pal.color[i].blue
-					      * (1 - gamma_correct_blue)) + (64 * sin ((float) pal.color[i].blue
-										       * M_PI / 128)) * gamma_correct_blue);
-    }
-    gl_setpalette (&pal);
-}
-#endif
-
 void
 load_fonts()
 {
@@ -737,6 +836,60 @@ init_fonts (void)
     Fgl_setfontcolors (TEXT_BG_COLOUR, TEXT_FG_COLOUR);
 }
 
+/* Miniscreen mouse handlers */
+
+static Mouse_Handle * mini_map_handle;
+static Mouse_Handle * mini_aux_handle;
+
+void 
+init_mini_map_mouse (void)
+{
+    mini_map_handle = mouse_register(&scr.mini_map,&mini_map_handler);
+    mini_aux_handle = mouse_register(&scr.mini_map_aux,&mini_aux_handler);
+}
+
+
+void
+mini_map_handler(int x, int y, int button)
+{
+    Rect* b = &scr.mini_map;
+
+    if (button == LC_MOUSE_RIGHTBUTTON) {
+	mini_screen_help ();
+	return;
+    }
+    if (mini_screen_flags == MINI_SCREEN_COAL_FLAG && !coal_survey_done) {
+	if (yn_dial_box ("Coal survey",
+			 "This will cost you 1 million",
+			 "After that it's is free to call again",
+			 "Do coal survey?") == 0)
+	{
+	    return;
+	}
+	do_coal_survey ();
+	print_total_money ();
+	return;
+    }
+    adjust_main_origin (x - scr.main_win.w / 32, 
+			y - scr.main_win.h / 32, 1);
+    
+    if (mini_screen_flags == MINI_SCREEN_PORT_FLAG)
+	draw_mini_screen ();
+}
+
+void
+mini_aux_handler(int x, int y, int button)
+{
+    if (button == LC_MOUSE_MIDDLEBUTTON) {
+	rotate_main_screen ();
+	return;
+    } else if (button == LC_MOUSE_RIGHTBUTTON) {
+	mini_screen_help ();
+	return;
+    }
+    rotate_mini_screen ();
+}
+
 void
 rotate_mini_screen (void)
 {
@@ -775,6 +928,10 @@ rotate_mini_screen (void)
 	break;
     }
     update_mini_screen ();
+
+    if (main_screen_flag == MAIN_SCREEN_EQUALS_MINI) {
+	refresh_main_screen ();
+    }
 }
 
 void
@@ -818,6 +975,41 @@ update_mini_screen (void)
 }
 
 void
+mini_screen_help (void)
+{
+    switch (mini_screen_flags)
+    {
+    case MINI_SCREEN_NORMAL_FLAG:
+	activate_help ("msb-normal.hlp");
+	break;
+    case MINI_SCREEN_POL_FLAG:
+	activate_help ("msb-pol.hlp");
+	break;
+    case MINI_SCREEN_UB40_FLAG:
+	activate_help ("msb-ub40.hlp");
+	break;
+    case MINI_SCREEN_STARVE_FLAG:
+	activate_help ("msb-starve.hlp");
+	break;
+    case MINI_SCREEN_POWER_FLAG:
+	activate_help ("msb-power.hlp");
+	break;
+    case MINI_SCREEN_FIRE_COVER:
+	activate_help ("msb-fire.hlp");
+	break;
+    case MINI_SCREEN_CRICKET_COVER:
+	activate_help ("msb-cricket.hlp");
+	break;
+    case MINI_SCREEN_HEALTH_COVER:
+	activate_help ("msb-health.hlp");
+	break;
+    case MINI_SCREEN_COAL_FLAG:
+	activate_help ("msb-coal.hlp");
+	break;
+    }
+}
+
+void
 mini_full_refresh (void)
 {
     Rect* mm = &scr.mini_map;
@@ -855,11 +1047,17 @@ draw_mini_screen (void)
 	    if (MP_TYPE(x,y) == CST_USED) {
 		xx = MP_INFO(x,y).int_1;
 		yy = MP_INFO(x,y).int_2;
-		Fgl_setpixel (mm->x + x, mm->y + y,
-			      main_groups[MP_GROUP(xx,yy)].colour);
+
+		/* WCK: I think this is what is blowing up */
+		if ((xx < 0 || xx > WORLD_SIDE_LEN) ||
+		    (yy < 0 || yy > WORLD_SIDE_LEN)) {
+		  printf("Argh!  mini_screen out of range on CST_USED!\n");
+		  printf("xx=%d,yy=%d.  Continuing\n",xx,yy);
+		}
+
+		Fgl_setpixel (mm->x + x, mm->y + y, main_groups[MP_GROUP(xx,yy)].colour);
 	    } else {
-		Fgl_setpixel (mm->x + x, mm->y + y,
-			      main_groups[MP_GROUP(x,y)].colour);
+		Fgl_setpixel (mm->x + x, mm->y + y,  main_groups[MP_GROUP(x,y)].colour);
 	    }
 	}
     }
@@ -1350,21 +1548,21 @@ draw_mini_screen_cursor (void)
     Fgl_hline (mini->x + main_screen_originx
 	       ,mini->y + main_screen_originy
 	       ,mini->x + main_screen_originx + mw->w / 16 - 1
-	       ,green (30));
+	       ,255);
     Fgl_hline (mini->x + main_screen_originx
 	       ,mini->y + main_screen_originy + mw->h / 16 - 1
 	       ,mini->x + main_screen_originx + mw->w / 16 - 1
-	       ,green (30));
+	       ,255);
     Fgl_line (mini->x + main_screen_originx
 	      ,mini->y + main_screen_originy
 	      ,mini->x + main_screen_originx
 	      ,mini->y + main_screen_originy + mw->h / 16 - 1
-	      ,green (30));
+	      ,255);
     Fgl_line (mini->x + main_screen_originx + mw->w / 16 - 1
 	      ,mini->y + main_screen_originy
 	      ,mini->x + main_screen_originx + mw->w / 16 - 1
 	      ,mini->y + main_screen_originy + mw->h / 16 - 1
-	      ,green (30));
+	      ,255);
 
 }
 
@@ -1469,37 +1667,31 @@ print_stats (void)
     hide_mouse ();
 #endif
 
-    /* Networked games refresh the screen in response to server messages.
-       The message handler sets flags in the update_scoreboard struct, which 
-       are checked below.  Non-networked games set the flags periodically
-       based on the current timestep. */
-    if (!network_game) {
-	if (total_time % NUMOF_DAYS_IN_MONTH == (NUMOF_DAYS_IN_MONTH - 1)) {
-	    update_scoreboard.monthly = 1;
-	}
-	if (total_time % NUMOF_DAYS_IN_YEAR == (NUMOF_DAYS_IN_YEAR - 1)) {
-	    update_scoreboard.yearly_1 = 1;
-	    update_scoreboard.money = 1;
-	}
-	if ((total_time % NUMOF_DAYS_IN_YEAR) == 0) {
-	    update_scoreboard.yearly_2 = 1;
-	}
-	if (real_time > mappoint_stats_time) {
-	    update_scoreboard.mps = 1;
-	    mappoint_stats_time = real_time + 1000;
-	}
-	if (mini_screen_flags != MINI_SCREEN_NORMAL_FLAG 
-	    && real_time > mini_screen_time) {
-	    update_scoreboard.mini = 1;
-	    mini_screen_time = real_time + 1000;
-	}
-	if ((total_time % NUMOF_DAYS_IN_YEAR) == 0) {
-	    calculate_time_for_year ();
-	    print_time_for_year ();
-	}
-	if (total_time % NUMOF_DAYS_IN_MONTH == 1) {
-	    update_scoreboard.date = 1;
-	}
+    if (total_time % NUMOF_DAYS_IN_MONTH == (NUMOF_DAYS_IN_MONTH - 1)) {
+	update_scoreboard.monthly = 1;
+    }
+    if (total_time % NUMOF_DAYS_IN_YEAR == (NUMOF_DAYS_IN_YEAR - 1)) {
+	update_scoreboard.yearly_1 = 1;
+	update_scoreboard.money = 1;
+    }
+    if ((total_time % NUMOF_DAYS_IN_YEAR) == 0) {
+	update_scoreboard.yearly_2 = 1;
+    }
+    if (real_time > mappoint_stats_time) {
+	update_scoreboard.mps = 1;
+	mappoint_stats_time = real_time + 1000;
+    }
+    if (mini_screen_flags != MINI_SCREEN_NORMAL_FLAG 
+	&& real_time > mini_screen_time) {
+	update_scoreboard.mini = 1;
+	mini_screen_time = real_time + 1000;
+    }
+    if ((total_time % NUMOF_DAYS_IN_YEAR) == 0) {
+	calculate_time_for_year ();
+	print_time_for_year ();
+    }
+    if (total_time % NUMOF_DAYS_IN_MONTH == 1) {
+	update_scoreboard.date = 1;
     }
 
     /* Decode and perform update requests according to scoreboard */
@@ -1582,19 +1774,11 @@ print_stats (void)
 	Fgl_write (STATS_X + (20 + 12) * 8, STATS_Y + 8, s);
 #endif
 
-	update_pbar_pop (housed_population + people_pool);
-	update_pbar_tech (tech_level);
-	update_pbar_food (tfood_in_markets / NUMOF_DAYS_IN_MONTH);
-	update_pbar_jobs (tjobs_in_markets / NUMOF_DAYS_IN_MONTH);
-	update_pbar_money (total_money / 400);
-	update_pbar_coal (tcoal_in_markets / NUMOF_DAYS_IN_MONTH);
-	update_pbar_goods (tgoods_in_markets / NUMOF_DAYS_IN_MONTH);
-	update_pbar_ore (tore_in_markets / NUMOF_DAYS_IN_MONTH);
-	update_pbar_steel (tsteel_in_markets / NUMOF_DAYS_IN_MONTH);
+	update_pbars_monthly();
 
 	refresh_pbars();
 
-	update_select_buttons ();
+	update_avail_modules ();
     }
 
     if (update_scoreboard.yearly_1) {
@@ -1611,33 +1795,24 @@ print_stats (void)
 void
 print_total_money (void)
 {
-/* GCS FIX:  This should be done in pbar and ms_global/FINANCE */
-#if defined (FINANCE_WINDOW)
-    char s[100], s2[100], i;
-    if (total_money > 2000000000)
-	total_money = 2000000000;
-    else if (total_money < -2000000000)
-	total_money = -2000000000;
-    if (total_money / 1000000 == 0)
-	strcpy (s, "     ");
-    else
-	sprintf (s, "%5d", total_money / 1000000);
-    if ((total_money < 0) && (total_money / 1000000 != 0))
-	sprintf (s2, " %06d", -total_money % 1000000);
-    else if (total_money / 1000000 != 0)
-	sprintf (s2, " %06d", total_money % 1000000);
-    else
-	sprintf (s2, "%7d", total_money % 1000000);
-    if (total_money / 1000000 != 0)
-	s2[0] = MONEY_SEPARATOR;
-    strcat (s, s2);
-    i = 3;
+    Rect* b = &scr.money;
+    char str[MONEY_W / CHAR_WIDTH + 1];
+    size_t count;
+
+    count = sprintf(str, "Money: ");
+    count += commify(str + count, (MONEY_W / CHAR_WIDTH) - count, total_money);
+    count += snprintf(str + count, (MONEY_W / CHAR_WIDTH) - count, 
+		      "                                            ");
+    str[MONEY_W / CHAR_WIDTH] = '\0';
+
     if (total_money < 0)
 	Fgl_setfontcolors (TEXT_BG_COLOUR, red (30));
-    Fgl_write (FINANCE_X + i * 8, FINANCE_Y + 48, s);
+
+/*     Fgl_putbox (b->x, b->y, 16, 16, money_pbar_graphic); */
+    Fgl_write (b->x + 16, b->y, str);
+
     if (total_money < 0)
 	Fgl_setfontcolors (TEXT_BG_COLOUR, TEXT_FG_COLOUR);
-#endif
 }
 
 void
@@ -1671,17 +1846,27 @@ print_time_for_year (void)
 
 
     if (time_for_year > 3600.0)
-	sprintf (s, "%5.1f MINS/year  ", time_for_year / 60.0);
+	sprintf (s, "%s%5.1f MINS/year  V %s", 
+		 cheat_flag ? "TEST MODE" : "",
+		 time_for_year / 60.0, VERSION);
     else
-	sprintf (s, "%5.1f secs/year  V %s ", time_for_year, VERSION);
+	sprintf (s, "%s%5.1f secs/year  V %s ", 
+		 cheat_flag ? "TEST MODE" : "",
+		 time_for_year, VERSION);
     Fgl_write (b->x, b->y, s);
 }
+
+/* Write a message in the status area of the screen */
 
 void 
 status_message(char * message, int colour) 
 {
-    char s[50];
     Rect* b = &scr.status_message;
+
+    Fgl_fillbox(b->x, b->y, b->w, b->h, TEXT_BG_COLOUR);
+
+    if (message == NULL)
+	return;
 
     Fgl_write (b->x, b->y, message);
 #if defined (WIN32)
@@ -1951,60 +2136,6 @@ draw_market_cb (void)
     draw_cb_template (1);
 }
 
-#if defined (commentout)
-void
-draw_market_cb (void)		/* x & y are the market's pos. */
-{
-    int x, y, flags;
-    char s[100];
-    Rect* mcb = &scr.market_cb;
-
-#if defined (LC_X11) || defined (WIN32)
-    market_cb_drawn_flag = 1;
-#endif
-    x = mcbx;
-    y = mcby;
-    flags = MP_INFO(x,y).flags;
-    Fgl_getbox (mcb->x, mcb->y, mcb->w, mcb->h, market_cb_gbuf);
-    Fgl_fillbox (mcb->x, mcb->y, mcb->w, mcb->h, 28);
-    Fgl_setfontcolors (28,TEXT_FG_COLOUR);
-#ifdef USE_EXPANDED_FONT
-    gl_setwritemode (WRITEMODE_MASKED | FONT_EXPANDED);
-#endif
-
-    Fgl_write (mcb->x + 5 * 8, mcb->y + 4, "Market");
-    sprintf (s, "%3d,", x);
-    Fgl_write (mcb->x + 5 * 8 + 4, mcb->y + 2 * 8, s);
-    sprintf (s, "%3d", y);
-    Fgl_write (mcb->x + 9 * 8 + 4, mcb->y + 2 * 8, s);
-
-    Fgl_write (mcb->x + 6 * 8, mcb->y + 5 * 8, "FOOD");
-    Fgl_write (mcb->x + 6 * 8, mcb->y + 8 * 8, "JOBS");
-    Fgl_write (mcb->x + 6 * 8, mcb->y + 11 * 8, "COAL");
-    Fgl_write (mcb->x + 6 * 8 + 4, mcb->y + 14 * 8, "ORE");
-    Fgl_write (mcb->x + 4 * 8 + 4, mcb->y + 17 * 8, "GOODS");
-    Fgl_write (mcb->x + 4 * 8 + 4, mcb->y + 20 * 8, "STEEL");
-    Fgl_write (mcb->x + 6, mcb->y + 2 * 8, "Buy");
-    Fgl_write (mcb->x + 12 * 8, mcb->y + 2 * 8, "Sell");
-#ifdef USE_EXPANDED_FONT
-    gl_setwritemode (WRITEMODE_OVERWRITE | FONT_EXPANDED);
-#endif
-
-    draw_cb_box (0, 0, MP_INFO(mcbx,mcby).flags & FLAG_MB_FOOD);
-    draw_cb_box (0, 1, MP_INFO(mcbx,mcby).flags & FLAG_MS_FOOD);
-    draw_cb_box (1, 0, MP_INFO(mcbx,mcby).flags & FLAG_MB_JOBS);
-    draw_cb_box (1, 1, MP_INFO(mcbx,mcby).flags & FLAG_MS_JOBS);
-    draw_cb_box (2, 0, MP_INFO(mcbx,mcby).flags & FLAG_MB_COAL);
-    draw_cb_box (2, 1, MP_INFO(mcbx,mcby).flags & FLAG_MS_COAL);
-    draw_cb_box (3, 0, MP_INFO(mcbx,mcby).flags & FLAG_MB_ORE);
-    draw_cb_box (3, 1, MP_INFO(mcbx,mcby).flags & FLAG_MS_ORE);
-    draw_cb_box (4, 0, MP_INFO(mcbx,mcby).flags & FLAG_MB_GOODS);
-    draw_cb_box (4, 1, MP_INFO(mcbx,mcby).flags & FLAG_MS_GOODS);
-    draw_cb_box (5, 0, MP_INFO(mcbx,mcby).flags & FLAG_MB_STEEL);
-    draw_cb_box (5, 1, MP_INFO(mcbx,mcby).flags & FLAG_MS_STEEL);
-}
-#endif
-
 void
 close_market_cb (void)
 {
@@ -2020,7 +2151,6 @@ close_market_cb (void)
 
     /* when exiting market cb, stop the mouse repeating straight away */
     cs_mouse_button = LC_MOUSE_LEFTBUTTON;
-    cs_mouse_button_repeat = real_time + 1000;
 }
 
 void
@@ -2040,57 +2170,6 @@ draw_port_cb (void)
     draw_cb_template (0);
 }
 
-#if defined (commentout)
-void
-draw_port_cb (void)
-{
-    int x, y, flags;
-    char s[100];
-    Rect* mcb = &scr.market_cb;
-
-#if defined (LC_X11) || defined (WIN32)
-    port_cb_drawn_flag = 1;
-#endif
-    x = mcbx;
-    y = mcby;
-
-    flags = MP_INFO(x,y).flags;
-    /* use the market cb resources where possible. */
-    Fgl_getbox (mcb->x, mcb->y, mcb->w, mcb->h, market_cb_gbuf);
-    Fgl_fillbox (mcb->x, mcb->y, mcb->w, mcb->h, 28);
-#ifdef USE_EXPANDED_FONT
-    gl_setwritemode (WRITEMODE_MASKED | FONT_EXPANDED);
-#endif
-    Fgl_write (mcb->x + 7 * 8, mcb->y + 1, "Port");
-    Fgl_write (mcb->x + 7 * 8, mcb->y + 7 * 8, "FOOD");
-    Fgl_write (mcb->x + 7 * 8, mcb->y + 10 * 8, "COAL");
-    Fgl_write (mcb->x + 7 * 8 + 4, mcb->y + 13 * 8, "ORE");
-    Fgl_write (mcb->x + 6 * 8 + 4, mcb->y + 16 * 8, "GOODS");
-    Fgl_write (mcb->x + 6 * 8 + 4, mcb->y + 19 * 8, "STEEL");
-    Fgl_write (mcb->x + 12, mcb->y + 2 * 8, "Buy");
-    Fgl_write (mcb->x + 14 * 8, mcb->y + 2 * 8, "Sell");
-    sprintf (s, "%3d", x);
-    s[3] = ',';
-    s[4] = 0;
-    Fgl_write (mcb->x + 5 * 8 + 4, mcb->y + 2 * 8, s);
-    sprintf (s, "%3d", y);
-    Fgl_write (mcb->x + 9 * 8 + 4, mcb->y + 2 * 8, s);
-#ifdef USE_EXPANDED_FONT
-    gl_setwritemode (WRITEMODE_OVERWRITE | FONT_EXPANDED);
-#endif
-
-    draw_cb_box (1, 0, MP_INFO(mcbx,mcby).flags & FLAG_MB_FOOD);
-    draw_cb_box (1, 1, MP_INFO(mcbx,mcby).flags & FLAG_MS_FOOD);
-    draw_cb_box (2, 0, MP_INFO(mcbx,mcby).flags & FLAG_MB_COAL);
-    draw_cb_box (2, 1, MP_INFO(mcbx,mcby).flags & FLAG_MS_COAL);
-    draw_cb_box (3, 0, MP_INFO(mcbx,mcby).flags & FLAG_MB_ORE);
-    draw_cb_box (3, 1, MP_INFO(mcbx,mcby).flags & FLAG_MS_ORE);
-    draw_cb_box (4, 0, MP_INFO(mcbx,mcby).flags & FLAG_MB_GOODS);
-    draw_cb_box (4, 1, MP_INFO(mcbx,mcby).flags & FLAG_MS_GOODS);
-    draw_cb_box (5, 0, MP_INFO(mcbx,mcby).flags & FLAG_MB_STEEL);
-    draw_cb_box (5, 1, MP_INFO(mcbx,mcby).flags & FLAG_MS_STEEL);
-}
-#endif
 
 void
 close_port_cb (void)
@@ -2104,144 +2183,56 @@ close_port_cb (void)
     Fgl_putbox (mcb->x, mcb->y, mcb->w, mcb->h, market_cb_gbuf);
     /* when exiting port cb, stop the mouse repeating straight away */
     cs_mouse_button = LC_MOUSE_LEFTBUTTON;
-    cs_mouse_button_repeat = real_time + 1000;
 }
 
 int
-yn_dial_box (char *title, char *s1, char *s2, char *s3)
+yn_dial_box (char * s1, char * s2, char * s3, char *s4)
 {
-    int x, y, h, i;
-    unsigned int w = 0;
-    char *ss;
+    int result;
+    result = dialog_box(red(10),7,
+			0,0,s1,
+			0,0,"",
+			0,0,s2,
+			0,0,s3,
+			0,0,s4,
+			1,'y',"Yes",
+			1,'n',"No");
 
-    unrequest_mappoint_stats ();
-    unrequest_main_screen ();
+    return (result == 'y') ? 1 : 0;
+}
 
-    cs_mouse_button_delay = 0;
-    /* find len of longest string */
-    if (strlen (s1) > w)
-	w = strlen (s1);
-    if (strlen (s2) > w)
-	w = strlen (s2);
-    if (strlen (s3) > w)
-	w = strlen (s3);
-    w += 4;			/* add a few spaces to the sides */
-    if (w < 20)			/* min width */
-	w = 20;
-    w *= 8;			/* convert chars to pixels */
-
-    x = (640 / 2) - (w / 2);
-    y = (480 / 2) - (8 * 9 / 2);
-    h = 9 * 8;
-    ss = (char *) malloc ((w + 16) * (h + 16) * sizeof (char));
-    if (ss == 0) {
-	malloc_failure ();
+void
+undosify_string (char *s)
+{
+    /* Convert '\r\n' to '\n' in string */
+    char prev_char = 0;
+    char *p = s, *q = s;
+    while (*p) {
+	if (*p != '\r') {
+	    if (prev_char == '\r' && *p != '\n') {
+		*q++ = '\n';
+	    }
+	    *q++ = *p;
+	}
+	prev_char = *p;
+        p++;
     }
-    hide_mouse ();
-    Fgl_getbox (x - 8, y - 8, w + 16, h + 16, ss);
-    Fgl_fillbox (x, y, w, h, YN_DIALBOX_BG_COLOUR);
-    for (i = 1; i < 8; i++)
-    {
-	Fgl_hline (x - i, y - i, x + w + i - 1, YN_DIALBOX_BG_COLOUR + i + i);
-	Fgl_hline (x - i, y + h + i - 1, x + w + i - 1, YN_DIALBOX_BG_COLOUR + i + i);
-	Fgl_line (x - i, y - i, x - i, y + h + i - 1, YN_DIALBOX_BG_COLOUR + i + i);
-	Fgl_line (x + w + i - 1, y - i, x + w + i - 1, y + h + i - 1, YN_DIALBOX_BG_COLOUR + i + i);
+    if (prev_char == '\r') {
+	*q++ = '\n';
     }
-    db_yesbox_x1 = x + w / 4 - (2 * 8);
-    db_yesbox_x2 = db_yesbox_x1 + 4 * 8;
-    db_yesbox_y1 = (y + h - 14 - 1);
-    db_yesbox_y2 = db_yesbox_y1 + 10 + 2;
-    db_nobox_x1 = x + ((3 * w) / 4) - (2 * 8);
-    db_nobox_x2 = db_nobox_x1 + 4 * 8;
-    db_nobox_y1 = (y + h - 14 - 1);
-    db_nobox_y2 = db_nobox_y1 + 10 + 2;
-    Fgl_fillbox (db_yesbox_x1, db_yesbox_y1, 4 * 8, 10 + 2, white (0));
-    Fgl_fillbox (db_nobox_x1, db_nobox_y1, 4 * 8, 10 + 2, white (0));
-    Fgl_write (db_yesbox_x1 + 4, db_yesbox_y1 + 2, "YES");
-    Fgl_write (db_nobox_x1 + 8, db_nobox_y1 + 2, "NO");
-#ifdef USE_EXPANDED_FONT
-    gl_setwritemode (WRITEMODE_MASKED | FONT_EXPANDED);
-#else
-    Fgl_setfontcolors (YN_DIALBOX_BG_COLOUR, TEXT_FG_COLOUR);
-#endif
-    Fgl_write ((x + w / 2) - (strlen (title) * 4), y + 4, title);
-    Fgl_write ((x + w / 2) - (strlen (s1) * 4), y + 20, s1);
-    Fgl_write ((x + w / 2) - (strlen (s2) * 4), y + 30, s2);
-    Fgl_write ((x + w / 2) - (strlen (s3) * 4), y + 40, s3);
-#ifdef USE_EXPANDED_FONT
-    gl_setwritemode (WRITEMODE_OVERWRITE | FONT_EXPANDED);
-#else
-    Fgl_setfontcolors (TEXT_BG_COLOUR, TEXT_FG_COLOUR);
-#endif
-    redraw_mouse ();
-    db_flag = 1;
-    /* GCS FIX:  I'll bet this is the cause of the mouse droppings bug */
-    /* shake the mouse a bit to make sure we have the correct cursor. */
-    cs_mouse_handler (0, -1, 0);
-    cs_mouse_handler (0, 1, 0);
-    db_yesbox_clicked = 0;
-    db_nobox_clicked = 0;
-    db_yesbox_clicked = 0;
-    db_nobox_clicked = 0;
-    do
-    {
-	lc_usleep (1000);
-
-#ifdef LC_X11
-	call_event ();
-	i = x_key_value;
-	x_key_value = 0;
-#elif defined (WIN32)
-	HandleMouse ();
-	i = GetKeystroke ();
-#else
-	mouse_update ();
-	i = vga_getkey ();
-#endif
-	if (i == 10 || i == 13 || i == ' ' || i == 'y' || i == 'Y')
-	    db_yesbox_clicked = 1;
-	else if (i == 'n' || i == 127 || i == 'N')
-	    db_nobox_clicked = 1;
-    }
-    while (db_yesbox_clicked == 0 && db_nobox_clicked == 0);
-    db_flag = 0;
-    hide_mouse ();
-    Fgl_putbox (x - 8, y - 8, w + 16, h + 16, ss);
-    redraw_mouse ();
-    /* shake the mouse a bit to make sure we have the correct cursor. */
-    cs_mouse_handler (0, -1, 0);
-    cs_mouse_handler (0, 1, 0);
-
-    free (ss);
-    /*
-      // this flag is there to reset the mouse button, mouse_update() is not
-      // 'very' re-entrant, so I've got to clean it up after we get out of here.
-      // Yet another hack that I don't like! I need to get these dial boxes
-      // in the main loop!
-    */
-    reset_mouse_flag = 1;
-    cs_mouse_button_repeat = real_time + 1000;
-
-    request_main_screen ();
-
-    if (db_yesbox_clicked != 0)
-	return (1);
-    return (0);
+    *q = '\0';
 }
 
 void
 ok_dial_box (char *fn, int good_bad, char *xs)
 {
-    char s[100];
-    int i, l, x, y, h, w, colour;
     FILE *inf;
-    char *ss;
+    struct stat statbuf;
+    int colour;
+    char * ss;
+    char s[100];
+    int retval;
 
-    unrequest_mappoint_stats ();
-    unrequest_main_screen ();
-
-    cs_mouse_button_delay = 0;
-    /* select which colour to draw the box in. */
     if (suppress_ok_buttons != 0)
 	return;
     if (good_bad == GOOD || good_bad == RESULTS)
@@ -2257,277 +2248,39 @@ ok_dial_box (char *fn, int good_bad, char *xs)
 	strcpy (s, message_path);
 	strcat (s, fn);
     }
-    if ((inf = fopen (s, "r")) == NULL)
+
+    if ((inf = fopen (s, "rb")) == NULL)
     {
 	printf ("Can't open message <%s> for OK dialog box\n", s);
-
-
 	strcpy (s, message_path);
 	strcat (s, "error.mes");
-	if ((inf = fopen (s, "r")) == NULL)
+	if ((inf = fopen (s, "rb")) == NULL)
 	{
-	    fprintf (stderr
-		     ,"Can't open default message <%s> either\n", s);
+	    fprintf (stderr,
+		     "Can't open default message <%s> either\n", s);
 	    fprintf (stderr, " ...it was not displayed");
 	    return;
 	}
-    }
-    /* static 74*22 char array for the message info array */
-    l = 0;
-    while (feof (inf) == 0 && l < 20)
-    {
-	if (fgets (okmessage[l], 70, inf) == 0)
-	    break;
-	l++;
-    }
-    fclose (inf);
+    } 
+    stat(s,&statbuf);
+
+    ss = (char *)lcalloc(statbuf.st_size + 1);
+    retval = fread(ss,sizeof(char),statbuf.st_size,inf);
+    ss[statbuf.st_size] = '\0';
+
+    undosify_string (ss);
+
     if (xs != 0)
-    {
-	strncpy (okmessage[l], xs, 70);
-	l++;
-    }
-    /* 'l' is now the number of lines. Work out the height of the box. */
-    h = (l + 3) * 10;		/* half a line above and below the title, 2 lines */
-    /* for the ok button. 10 pixels per line */
-
-    w = 0;
-    /* Get rid of new line and work out the width of the logest line. */
-    for (i = 0; i < l; i++)
-    {
-	/* get rid of the newline */
-	if (okmessage[i][strlen (okmessage[i]) - 1] == 0xa)
-	    okmessage[i][strlen (okmessage[i]) - 1] = 0;
-	if (strlen (okmessage[i]) > (unsigned int) w)
-	    w = strlen (okmessage[i]);
-    }
-    w = (w + 2) * 8;		/* leave a space at either side. */
-    /* now we can work out the x and y points. */
-
-    x = (640 / 2) - (w / 2);
-    y = (480 / 2) - (h / 2);
-    ss = (char *) malloc ((w + 16) * (h + 16) * sizeof (char));
-    if (ss == 0)
-    {
-	malloc_failure ();
-    }
-    hide_mouse ();
-    Fgl_getbox (x - 8, y - 8, w + 16, h + 16, ss);
-    Fgl_fillbox (x, y, w, h, colour);
-    for (i = 1; i < 8; i++)
-    {
-	Fgl_hline (x - i, y - i, x + w + i - 1, colour + i + i);
-	Fgl_hline (x - i, y + h + i - 1, x + w + i - 1, colour + i + i);
-	Fgl_line (x - i, y - i, x - i, y + h + i - 1, colour + i + i);
-	Fgl_line (x + w + i - 1, y - i, x + w + i - 1, y + h + i - 1, colour + i + i);
-    }
-    db_okbox_x1 = x + w / 2 - (2 * 8);
-    db_okbox_x2 = db_okbox_x1 + 4 * 8;
-    db_okbox_y1 = y + h - 15;
-    db_okbox_y2 = db_okbox_y1 + 12;
-    Fgl_fillbox (db_okbox_x1, db_okbox_y1, 4 * 8, 10 + 2, white (0));
-    Fgl_write (db_okbox_x1 + 8, db_okbox_y1 + 2, "OK");
-#ifdef USE_EXPANDED_FONT
-    gl_setwritemode (WRITEMODE_MASKED | FONT_EXPANDED);
-#else
-    Fgl_setfontcolors (colour, TEXT_FG_COLOUR);
-#endif
-    Fgl_write ((x + w / 2) - (strlen (okmessage[0]) * 4), y + 4, okmessage[0]);
-    for (i = 1; i < l; i++)
-	Fgl_write ((x + w / 2) - (strlen (okmessage[i]) * 4)
-		   ,y + 10 + i * 10, okmessage[i]);
-#ifdef USE_EXPANDED_FONT
-    gl_setwritemode (WRITEMODE_OVERWRITE | FONT_EXPANDED);
-#else
-    Fgl_setfontcolors (TEXT_BG_COLOUR, TEXT_FG_COLOUR);
-#endif
-    redraw_mouse ();
-    db_okflag = 1;
-    /* shake the mouse a bit to make sure we have the correct cursor. */
-    cs_mouse_handler (0, -1, 0);
-    cs_mouse_handler (0, 1, 0);
-
-#if defined (LC_X11) || defined (WIN32)
-    call_event ();
-#else
-    mouse_update ();
-#endif
-    db_okbox_clicked = 0;
-    cs_mouse_button = LC_MOUSE_LEFTBUTTON;
-#if defined (LC_X11) || defined (WIN32)
-    call_event ();
-#else
-    mouse_update ();
-#endif
-    db_okbox_clicked = 0;
-    do
-    {
-	lc_usleep (1000);
-
-#ifdef LC_X11
-	call_wait_event ();
-	i = x_key_value;
-	x_key_value = 0;
-#elif defined (WIN32)
-	HandleMouse ();
-	i = GetKeystroke ();
-#else
-	mouse_update ();
-	i = vga_getkey ();
-#endif
-	if (i == 10 || i == 13 || i == ' ')
-	    db_okbox_clicked = 1;
-    }
-    while (db_okbox_clicked == 0);
-    db_okflag = 0;
-    hide_mouse ();
-    Fgl_putbox (x - 8, y - 8, w + 16, h + 16, ss);
-    redraw_mouse ();
-    /* shake the mouse a bit to make sure we have the correct cursor. */
-    cs_mouse_handler (0, -1, 0);
-    cs_mouse_handler (0, 1, 0);
-
-    free (ss);
-    /* when exiting dial box, stop the mouse repeating straight away */
-    reset_mouse_flag = 1;
-    cs_mouse_button_repeat = real_time + 1000;
-
-    request_main_screen ();
+	dialog_box(colour,3,
+		   0,0,ss,
+		   0,0,xs,
+		   2,' ',"OK");
+    else
+	dialog_box(colour,2,
+		   0,0,ss,
+		   2,' ',"OK");
+    fclose(inf);
 }
-
-void
-order_select_buttons (void)
-{
-    /* sbut converts a group into a column major index of the button array. */
-    sbut[0] = 16;			/* buldoze */
-    sbut[1] = 13;			/* powerline */
-    sbut[2] = 15;			/* solar power */
-    sbut[3] = 14;			/* substation */
-    sbut[4] = 0;			/* residence */
-    sbut[5] = 1;			/* farm */
-    sbut[6] = 2;			/* market */
-    sbut[7] = 19;			/* track */
-    sbut[8] = 10;			/* coalmine */
-    sbut[9] = 28;			/* rail */
-    sbut[10] = 29;		/* coal power */
-    sbut[11] = 25;		/* road */
-    sbut[12] = 27;		/* light industry */
-    sbut[13] = 11;		/* university */
-    sbut[14] = 3;			/* commune */
-    sbut[15] = 4;			/* oremine */
-    sbut[16] = 5;			/* tip */
-    sbut[17] = 9;			/* export */
-    sbut[18] = 12;		/* heavy industry */
-    sbut[19] = 6;			/* parkland */
-    sbut[20] = 30;		/* recycle */
-    sbut[21] = 20;		/* water */
-    sbut[22] = 26;		/* health */
-    sbut[23] = 31;		/* rocket */
-    sbut[24] = 24;		/* windmill */
-    sbut[25] = 17;		/* monument */
-    sbut[26] = 21;		/* school */
-    sbut[27] = 22;		/* blacksmith */
-    sbut[28] = 8;			/* mill */
-    sbut[29] = 18;		/* pottery */
-    sbut[30] = 23;		/* fire station */
-    sbut[31] = 7;			/* cricket  */
-}
-
-int
-inv_sbut (int button)
-{
-    int i, j;
-    for (i = 0; i < 32; i++)	/* just a test recode later */
-	if (sbut[i] == button)
-	{
-	    j = i;
-	    return (j);
-	}
-    printf ("Button=%d\n", button);
-    for (i = 0; i < 32; i++)
-	printf ("%5d", sbut[i]);
-    printf ("\n");
-    do_error ("An inv_sbut error has happened. This is impossible!!");
-    return (-1);			/* can't get here */
-
-}
-
-
-void
-call_select_change_up (int button)
-{
-    button = inv_sbut (button);
-
-    if (button == GROUP_WINDMILL)
-	ok_dial_box ("windmillup.mes", GOOD, 0L);
-    else if (button == GROUP_COAL_POWER)
-	ok_dial_box ("coalpowerup.mes", GOOD, 0L);
-    else if (button == (GROUP_SOLAR_POWER - 1))
-	/* -1 a hack to make it work. Really dirty :( 
-	   Caused by the fact that groups and buttons are different until 
-	   after the bulldoze button, then they are the same.
-	*/
-	ok_dial_box ("solarpowerup.mes", GOOD, 0L);
-    else if (button == GROUP_COALMINE)
-	ok_dial_box ("coalmineup.mes", GOOD, 0L);
-    else if (button == GROUP_RAIL)
-	ok_dial_box ("railwayup.mes", GOOD, 0L);
-    else if (button == GROUP_ROAD)
-	ok_dial_box ("roadup.mes", GOOD, 0L);
-    else if (button == GROUP_INDUSTRY_L)
-	ok_dial_box ("ltindustryup.mes", GOOD, 0L);
-    else if (button == GROUP_UNIVERSITY)
-	ok_dial_box ("universityup.mes", GOOD, 0L);
-    else if (button == GROUP_OREMINE)
-    {
-	if (GROUP_OREMINE_TECH > 0)
-	    ok_dial_box ("oremineup.mes", GOOD, 0L);
-    }
-    else if (button == GROUP_PORT)	/* exports are the same */
-	ok_dial_box ("import-exportup.mes", GOOD, 0L);
-    else if (button == GROUP_INDUSTRY_H)
-	ok_dial_box ("hvindustryup.mes", GOOD, 0L);
-    else if (button == GROUP_PARKLAND)
-    {
-	if (GROUP_PARKLAND_TECH > 0)
-	    ok_dial_box ("parkup.mes", GOOD, 0L);
-    }
-    else if (button == GROUP_RECYCLE)
-	ok_dial_box ("recycleup.mes", GOOD, 0L);
-    else if (button == GROUP_RIVER)
-    {
-	if (GROUP_WATER_TECH > 0)
-	    ok_dial_box ("riverup.mes", GOOD, 0L);
-    }
-    else if (button == GROUP_HEALTH)
-	ok_dial_box ("healthup.mes", GOOD, 0L);
-    else if (button == GROUP_ROCKET)
-	ok_dial_box ("rocketup.mes", GOOD, 0L);
-    else if (button == GROUP_SCHOOL)
-    {
-	if (GROUP_SCHOOL_TECH > 0)
-	    ok_dial_box ("schoolup.mes", GOOD, 0L);
-    }
-    else if (button == GROUP_BLACKSMITH)
-    {
-	if (GROUP_BLACKSMITH_TECH > 0)
-	    ok_dial_box ("blacksmithup.mes", GOOD, 0L);
-    }
-    else if (button == GROUP_MILL)
-    {
-	if (GROUP_MILL_TECH > 0)
-	    ok_dial_box ("millup.mes", GOOD, 0L);
-    }
-    else if (button == GROUP_POTTERY)
-    {
-	if (GROUP_POTTERY_TECH > 0)
-	    ok_dial_box ("potteryup.mes", GOOD, 0L);
-    }
-    else if (button == GROUP_FIRESTATION)
-	ok_dial_box ("firestationup.mes", GOOD, 0L);
-    else if (button == GROUP_CRICKET)
-	ok_dial_box ("cricketup.mes", GOOD, 0L);
-}
-
 
 
 void
@@ -2770,5 +2523,17 @@ display_rocket_result_dialog (int result)
 	ok_dial_box ("launch-evac.mes", GOOD, 0L);
 	break;
     }
+}
+
+void
+Fgl_getrect(Rect * r, void * buffer)
+{
+    Fgl_getbox(r->x,r->y,r->w,r->h,buffer);
+}
+
+void 
+Fgl_putrect(Rect *r, void * buffer)
+{
+    Fgl_putbox(r->x,r->y,r->w,r->h,buffer);
 }
 

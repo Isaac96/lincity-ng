@@ -1512,11 +1512,10 @@ get_type_name (short type, char * s)
      short g;
      g = get_group_of_type (type);
      strcpy(s,main_groups[g].name);
-     printf(s);
 }
 
 int
 get_type_cost (short type)
 {
-    return get_group_cost (get_group_of_type (type));
+    return get_group_cost ((short) get_group_of_type (type));
 }

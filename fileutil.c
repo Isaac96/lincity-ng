@@ -61,11 +61,6 @@
 #endif
 #endif
 
-#if defined (HAVE_POPEN)
-FILE *popen(const char *command, const char *type);
-int pclose(FILE *stream);
-#endif
-
 #include <ctype.h>
 #include "common.h"
 #ifdef LC_X11
@@ -99,14 +94,7 @@ static const char *guess_category_value (int category,
 /* ---------------------------------------------------------------------- *
  * Public Global Variables
  * ---------------------------------------------------------------------- */
-#if defined (WIN32)
-char LIBDIR[_MAX_PATH];
-#elif defined (__EMX__)
-#ifdef LIBDIR
-#undef LIBDIR   /* yes, I know I shouldn't ;-) */
-#endif
-char LIBDIR[256];
-#endif
+char LIBDIR[LC_PATH_MAX];
 
 char *lc_save_dir;
 int lc_save_dir_len;
@@ -143,6 +131,7 @@ execute_command (char *cmd, char *p1, char *p2, char *p3)
   }
   sprintf (sys_cmd, "%s %s %s %s", cmd, p1, p2, p3);
   ret_value = system (sys_cmd);
+/* fprintf(stderr, "system(%s)=%i\n", sys_cmd, ret_value); */
   free (sys_cmd);
   return ret_value;
 }
@@ -177,10 +166,22 @@ fopen_read_gzipped (char* fn)
     FILE* fp;
 
 #if defined (HAVE_GZIP) && defined (HAVE_POPEN)
+#ifdef __EMX__
+    const char* cmd_str = "gzip -d -c < %s 2> nul";
+#else
     const char* cmd_str = "gzip -d -c < %s 2> /dev/null";
+#endif
     char *cmd = (char*) malloc (strlen (cmd_str) + strlen (fn) + 1);
+    
     sprintf (cmd, cmd_str, fn);
+#ifdef __EMX__
+    fp=popen(cmd,"rb");
+#else
     fp=popen(cmd,"r");
+#endif
+    if (fp==NULL) {
+       fprintf(stderr, "Failed to open pipe cmd: %s\n", cmd);
+    }
     free(cmd);
 
 #elif defined (HAVE_GZIP) && !defined (HAVE_POPEN)
@@ -263,6 +264,56 @@ find_libdir (void)
     /* Finally give up */
     HandleError ("Error. Can't find LINCITY_HOME", FATAL);
 }
+
+#elif defined (__EMX__)
+void
+find_libdir (void)
+{
+    strcpy(LIBDIR, __XOS2RedirRoot(OS2_DEFAULT_LIBDIR));
+}
+
+#else /* Unix with configure */
+void
+find_libdir (void)
+{
+    const char searchfile[] = "colour.pal";
+    char *home_dir, *cwd;
+    char cwd_buf[LC_PATH_MAX];
+    char filename_buf[LC_PATH_MAX];
+
+    /* Check 1: environment variable */
+    home_dir = getenv ("LINCITY_HOME");
+    if (home_dir) {
+	snprintf (filename_buf, LC_PATH_MAX, "%s%c%s", 
+		  home_dir, PATH_SLASH, searchfile);
+	if (file_exists(filename_buf)) {
+	    strncpy (LIBDIR, home_dir, LC_PATH_MAX);
+	    return;
+	}
+    }
+
+    /* Check 2: current working directory */
+    cwd = getcwd (cwd_buf, LC_PATH_MAX);
+    if (cwd) {
+	snprintf (filename_buf, LC_PATH_MAX, "%s%c%s", 
+		  cwd_buf, PATH_SLASH, searchfile);
+	if (file_exists(filename_buf)) {
+	    strncpy (LIBDIR, cwd_buf, LC_PATH_MAX);
+	    return;
+	}
+    }
+
+    /* Check 3: default (configuration) directory */
+    snprintf (filename_buf, LC_PATH_MAX, "%s%c%s", 
+	      DEFAULT_LIBDIR, PATH_SLASH, searchfile);
+    if (file_exists(filename_buf)) {
+	strncpy (LIBDIR, DEFAULT_LIBDIR, LC_PATH_MAX);
+	return;
+    }
+
+    /* Finally give up */
+    HandleError ("Error. Can't find LINCITY_HOME", FATAL);
+}
 #endif
 
 
@@ -312,11 +363,12 @@ init_path_strings (void)
     char* homedir = NULL;
     const char* intl_suffix = "";
 
-#if defined (WIN32)
     find_libdir ();
+
+#if defined (WIN32)
     homedir = LIBDIR;
 #elif defined (__EMX__)
-    strcpy(LIBDIR, __XOS2RedirRoot(OS2_DEFAULT_LIBDIR));
+    homedir = getenv ("HOME");
 #else
     homedir = getenv ("HOME");
 #endif
