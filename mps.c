@@ -17,6 +17,7 @@
 #include "mouse.h"
 #include "screen.h"
 #include "power.h"
+#include "lcintl.h"
 
 /* ---------------------------------------------------------------------- *
  * Private Fn Prototypes
@@ -899,10 +900,11 @@ void
 mps_substation_setup (void)
 {
   Rect* mps = &scr.mappoint_stats;
-  Fgl_write (mps->x, mps->y + 40, "Grid");
-  Fgl_write (mps->x, mps->y + 48, "Max");
-  Fgl_write (mps->x, mps->y + 56, "Avail");
-  Fgl_write (mps->x, mps->y + 64, "Demand");
+  Fgl_write (mps->x, mps->y + 40, _("Grid"));
+  Fgl_write (mps->x, mps->y + 48, _("Max"));
+  Fgl_write (mps->x, mps->y + 56, _("Avail"));
+  Fgl_write (mps->x, mps->y + 64, _("Demand"));
+  Fgl_write (mps->x, mps->y + 72, _("Here"));
 }
 
 void
@@ -922,6 +924,10 @@ mps_substation (int x, int y)
 
   format_power (s, 100, grid[MP_INFO(x,y).int_6]->demand);
   Fgl_write (mps->x + 8 * 8, mps->y + 64, s);
+  
+  format_power (s, 100, MP_INFO(x,y).int_5);
+  Fgl_write (mps->x + 8 * 8, mps->y + 72, s);
+	       
 }
 
 void
@@ -973,6 +979,7 @@ mps_windmill_setup (int x, int y)
     Fgl_write (mps->x, mps->y + 48, "Max");
     Fgl_write (mps->x, mps->y + 56, "Avail");
     Fgl_write (mps->x, mps->y + 64, "Demand");
+    Fgl_write (mps->x, mps->y + 72, "Here");
   }
 }
 
@@ -1002,6 +1009,10 @@ mps_windmill (int x, int y)
       
       format_power (s, 10, grid[MP_INFO(x,y).int_6]->demand);
       Fgl_write (mps->x + 8 * 8, mps->y + 64, s);
+
+      format_power (s, 10, MP_INFO(x,y).int_5);
+      Fgl_write (mps->x + 8 * 8, mps->y + 72, s);
+
     }
 }
 
