@@ -13,14 +13,10 @@
 #include <math.h>
 #include "lcstring.h"
 
-/* this is for OS/2 - RVI */
-#ifdef __EMX__
-#include <float.h>
-#endif
-
 #include "lin-city.h"
 #include "lctypes.h"
 #include "cliglobs.h"
+#include "pixmap.h"
 
 #if defined (LC_X11)
 #include <X11/Xlib.h>
@@ -379,7 +375,7 @@ resize_pixmap (int new_width, int new_height)
 	if (new_height < pixmap_height) new_height = pixmap_height;
 	new_pixmap = (char*) malloc (new_height * new_width * sizeof(char));
 	for (i = 0; i < pixmap_height * pixmap_width; i++) {
-	    pixmap[i] = 0;
+	    pixmap[i] = 0;   /* GCS -- Why? */
 	}
 	free (pixmap);
 	pixmap = new_pixmap;
@@ -388,11 +384,18 @@ resize_pixmap (int new_width, int new_height)
     }
 }
 
+/* KBR 10/19/2002 MSVC was not happy with this being inline for release build */
+/* GCS 02/02/2003 That's because of the external reference in lcwin32.c. 
+                  For some reason, MSVC likes it in the header, while gcc 
+		  likes it in the file.  Still need to fix this in autoconf,
+                  but for now this will do. */
+#if !defined (WIN32)
 inline int 
 pixmap_index (int x, int y)
 {
     return y*pixmap_width + x;
 }
+#endif
 
 int 
 pixmap_getpixel (int x, int y)

@@ -6,16 +6,18 @@
 #include "lcconfig.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include "lcstring.h"
 #include "common.h"
 #include "lctypes.h"
 #include "lin-city.h"
 #include "mouse.h"
 #include "engglobs.h"
-#include "clistubs.h"
+/* #include "clistubs.h" */
 #include "engine.h"
 #include "screen.h"
-#include "climsg.h"
+#include "lcintl.h"
+/* #include "climsg.h" */
 
 
 unsigned char mouse_pointer[] = {
@@ -97,7 +99,12 @@ mouse_setup(void)
     cs_mouse_button = 0;
     cs_mouse_xmax = 640 - 1;
     cs_mouse_ymax = 480 - 1;
+
+    /* GCS -- This is meant to fix the upper left cursor problem,
+     *        but doesnt.  May 11, 2003 				*/
+    mox = 1; moy = 1;
     Fgl_getbox(mox, moy, 8, 8, under_mouse_pointer);
+
     mouse_seteventhandler(lc_mouse_handler);
 }
 
@@ -186,11 +193,65 @@ void
 HandleError (char *description, int degree)
 {
   fprintf (stderr,
-	   "An error has occurred.  The description is below...\n");
+	   _("An error has occurred.  The description is below...\n"));
   fprintf (stderr, "%s\n", description);
 
   if (degree == FATAL) {
-      fprintf (stderr, "Program aborting...\n");
+      fprintf (stderr, _("Program aborting...\n"));
       exit (-1);
     }
+}
+
+void
+init_mouse (void)
+{
+    mouse_setup ();
+}
+
+void
+setcustompalette (void)
+{
+    char s[100];
+    int i, n, r, g, b, flag[256];
+    FILE *inf;
+    Palette pal;
+    for (i = 0; i < 256; i++)
+	flag[i] = 0;
+    if ((inf = fopen (colour_pal_file, "r")) == 0)
+    {
+	printf ("The colour palette file <%s>... ", colour_pal_file);
+	do_error ("Can't find it.");
+    }
+    while (feof (inf) == 0)
+    {
+	fgets (s, 99, inf);
+	if (sscanf (s, "%d %d %d %d", &n, &r, &g, &b) == 4)
+	{
+	    pal.color[n].red = r;
+	    pal.color[n].green = g;
+	    pal.color[n].blue = b;
+	    flag[n] = 1;
+	}
+    }
+    fclose (inf);
+    for (i = 0; i < 256; i++)
+    {
+	if (flag[i] == 0)
+	{
+	    printf ("Colour %d not loaded\n", i);
+	    do_error ("Can't continue");
+	}
+	pal.color[i].red = (unsigned char) ((pal.color[i].red
+					     * (1 - gamma_correct_red)) + (64 * sin ((float) pal.color[i].red
+										     * M_PI / 128)) * gamma_correct_red);
+
+	pal.color[i].green = (unsigned char) ((pal.color[i].green
+					       * (1 - gamma_correct_green)) + (64 * sin ((float) pal.color[i].green
+											 * M_PI / 128)) * gamma_correct_green);
+
+	pal.color[i].blue = (unsigned char) ((pal.color[i].blue
+					      * (1 - gamma_correct_blue)) + (64 * sin ((float) pal.color[i].blue
+										       * M_PI / 128)) * gamma_correct_blue);
+    }
+    gl_setpalette (&pal);
 }

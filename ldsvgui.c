@@ -9,6 +9,9 @@
 #include "lcstring.h"
 #include "ldsvgui.h"
 #include "lcintl.h"
+#include "screen.h"
+#include "pbar.h"
+#include "module_buttons.h"
 
 /* this is for OS/2 - RVI */
 #ifdef __EMX__
@@ -62,11 +65,6 @@
 #endif
 #endif
 
-#if defined (HAVE_POPEN)
-FILE *popen(const char *command, const char *type);
-int pclose(FILE *stream);
-#endif
-
 #include <ctype.h>
 #include "common.h"
 #ifdef LC_X11
@@ -76,11 +74,10 @@ int pclose(FILE *stream);
 #include "lin-city.h"
 #include "cliglobs.h"
 #include "engglobs.h"
-#include "protocol.h"
-#include "clinet.h"
 #include "ldsvguts.h"
 #include "fileutil.h"
 #include "mouse.h"
+#include "stats.h"
 
 /* ---------------------------------------------------------------------- *
  * Private Fn Prototypes
@@ -178,11 +175,6 @@ do_prefs_buttons (int x, int y)
 	y > mw->y + outy && y < mw->y + outy + outh)
     {
 	close_prefs_screen ();
-#ifdef USE_EXPANDED_FONT
-	Fgl_setwritemode (WRITEMODE_OVERWRITE | FONT_EXPANDED);
-#else
-	Fgl_setfontcolors (TEXT_BG_COLOUR, TEXT_FG_COLOUR);
-#endif
 	refresh_main_screen ();
     }
 }
@@ -197,11 +189,6 @@ do_prefs_mouse (int x, int y, int mbutton)
     }
     /* If the user clicks outside of main window, cancel prefs?? */
     close_prefs_screen ();
-#ifdef USE_EXPANDED_FONT
-    Fgl_setwritemode (WRITEMODE_OVERWRITE | FONT_EXPANDED);
-#else
-    Fgl_setfontcolors (TEXT_BG_COLOUR, TEXT_FG_COLOUR);
-#endif
     refresh_main_screen ();
 }
 
@@ -211,18 +198,16 @@ do_prefs_screen (void)
     int x,y,w,h;
     Rect* mw = &scr.main_win;
 
-#if defined (LC_X11) || defined (WIN32)
     prefs_drawn_flag = 1;
-#endif
 
     hide_mouse ();
     Fgl_fillbox (mw->x, mw->y, mw->w, mw->h, LOAD_BG_COLOUR);
     Fgl_setfontcolors (LOAD_BG_COLOUR, TEXT_FG_COLOUR);
-    Fgl_write (mw->x + 80, mw->y + 4*8, "Transport overwrite");
-    Fgl_write (mw->x + 80, mw->y + 6*8, "Popup info to dialog boxes");
-    Fgl_write (mw->x + 80, mw->y + 8*8, "Time multiplexed stats windows");
+    Fgl_write (mw->x + 80, mw->y + 4*8, _("Transport overwrite"));
+    Fgl_write (mw->x + 80, mw->y + 6*8, _("Popup info to dialog boxes"));
+    Fgl_write (mw->x + 80, mw->y + 8*8, _("Time multiplexed stats windows"));
 #if defined (LC_X11)
-    Fgl_write (mw->x + 80, mw->y + 10*8, "Confine X pointer");
+    Fgl_write (mw->x + 80, mw->y + 10*8, _("Confine X pointer"));
 #endif
 
     x = 370;
@@ -237,12 +222,11 @@ do_prefs_screen (void)
 	      mw->x + x, mw->y + y + h, HELPBUTTON_COLOUR);
     Fgl_line (mw->x + x + w, mw->y + y,
 	      mw->x + x + w, mw->y + y + h, HELPBUTTON_COLOUR);
-    Fgl_write (mw->x + x + 2, mw->y + y + 2, "OUT");
+    Fgl_write (mw->x + x + 2, mw->y + y + 2, _("OUT"));
 
     draw_prefs_cb ();
-#if !defined (WIN32)
+
     redraw_mouse ();
-#endif
 }
 
 void
@@ -250,8 +234,14 @@ close_prefs_screen (void)
 {
     prefs_flag = 0;
     prefs_drawn_flag = 0;
+#ifdef USE_EXPANDED_FONT
+    Fgl_setwritemode (WRITEMODE_OVERWRITE | FONT_EXPANDED);
+#else
+    Fgl_setfontcolors (TEXT_BG_COLOUR, TEXT_FG_COLOUR);
+#endif
 }
 
+#if defined (NETWORK_ENABLE)
 void
 do_network_screen (void)
 {
@@ -284,6 +274,7 @@ do_network_screen (void)
     refresh_main_screen ();
     redraw_mouse ();
 }
+#endif
 
 void
 do_save_city ()
@@ -300,9 +291,9 @@ do_save_city ()
     Fgl_write (mw->x + 110, mw->y + 210
 	       ,_("Press space to cancel."));
     draw_save_dir (SAVE_BG_COLOUR);
+    db_flag = 1;
 #ifdef LC_X11
     redraw_mouse ();
-    db_flag = 1;
     cs_mouse_handler (0, -1, 0);
     cs_mouse_handler (0, 1, 0);
     do
@@ -314,6 +305,7 @@ do_save_city ()
     x_key_value = 0;
 #elif defined (WIN32)
     while (0 == (c = GetKeystroke ()));	/* Wait for keystroke */
+    redraw_mouse ();
 #else
     c = getchar ();
     redraw_mouse ();
@@ -342,6 +334,7 @@ do_save_city ()
     cs_mouse_handler (0, 1, 0);
     hide_mouse ();
     Fgl_setfontcolors (TEXT_BG_COLOUR, TEXT_FG_COLOUR);
+    save_flag = 0;
     refresh_main_screen ();
     redraw_mouse ();
 }
@@ -363,7 +356,7 @@ load_opening_city (char *s)
   Fgl_setfontcolors (TEXT_BG_COLOUR, TEXT_FG_COLOUR);
   refresh_main_screen ();
   suppress_ok_buttons = 1;
-  update_select_buttons ();
+  update_avail_modules (0);
   suppress_ok_buttons = 0;
   /* GCS: ?? */
   redraw_mouse ();
@@ -390,43 +383,42 @@ do_load_city (void)
     Fgl_write (mw->x + 110, mw->y + 210
 	       ,_("Press space to cancel."));
     draw_save_dir (LOAD_BG_COLOUR);
-    do
-    {
+    db_flag = 1;
+
+    do {
 #ifdef LC_X11
-	db_flag = 1;
 	redraw_mouse ();
 	cs_mouse_handler (0, -1, 0);
 	cs_mouse_handler (0, 1, 0);
-	do
-	{
+	do {
 	    call_event ();
 	    c = x_key_value;
-	}
-	while (c == 0);
+	} while (c == 0);
 	x_key_value = 0;
 #elif defined (WIN32)
 	while (0 == (c = GetKeystroke ()));	/* Wait for keystroke */
+	redraw_mouse ();
 #else
 	c = getchar ();
+	redraw_mouse ();
 #endif
-	if (c > '0' && c <= '9')
-	    if (strlen (save_names[c - '0']) < 1)
-	    {
+	if (c > '0' && c <= '9') {
+	    if (strlen (save_names[c - '0']) < 1) {
 		redraw_mouse ();
-		if (yn_dial_box (_("No scene.")
-				 ,_("There is no save scene with this number.")
-				 ,_("Do you want to")
-				 ,_("try again?")) != 0)
+		if (yn_dial_box (_("No scene."),
+				 _("There is no save scene with this number."),
+				 _("Do you want to"),
+				 _("try again?")) != 0)
 		    c = 0;
 		else
 		    c = ' ';
 		hide_mouse ();
 	    }
-    }
-    while ((c <= '0' || c > '9') && c != ' ');
+	}
+    } while (c==0);
+
     redraw_mouse ();
-    if (c > '0' && c <= '9')
-    {
+    if (c > '0' && c <= '9') {
 	if (yn_dial_box (_("Loading Scene")
 			 ,_("Do you want to load the scene")
 			 ,save_names[c - '0']
@@ -435,6 +427,7 @@ do_load_city (void)
 	    Fgl_write (mw->x + 70, mw->y + 310
 		       ,_("Loading scene...  please wait"));
 	    load_saved_city (save_names[c - '0']);
+	    refresh_pbars();
 	}
     }
     db_flag = 0;
@@ -442,9 +435,10 @@ do_load_city (void)
     cs_mouse_handler (0, 1, 0);
     hide_mouse ();
     Fgl_setfontcolors (TEXT_BG_COLOUR, TEXT_FG_COLOUR);
+    load_flag = 0;
     refresh_main_screen ();
     suppress_ok_buttons = 1;
-    update_select_buttons ();
+    update_avail_modules (0);
     suppress_ok_buttons = 0;
     redraw_mouse ();
 }
@@ -644,99 +638,6 @@ input_network_port (char *s)
     edit_string (s, 40, mw->x + 124, mw->y + 280);
 }
 
-#if 0
-void
-dump_tcore (void)
-{
-#ifdef ALLOW_TCORE_DUMP
-  char s[200];
-  int x, y, z, q, n;
-  FILE *ofile;
-  strcpy (s, getenv ("HOME"));
-  strcat (s, "/");
-  strcat (s, LC_SAVE_DIR);
-  strcat (s, "/");
-  strcat (s, "tcore.txt");
-  if ((ofile = fopen (s, "w")) == NULL)
-    {
-      printf (_("Tcore file <%s> - "), s);
-      do_error _("Can't open it!");
-    }
-  fprintf (ofile, _("Version=%d\n"), (int) VERSION_INT);
-  q = sizeof (struct MAPPOINT);
-  prog_box (_("Saving tcore"), 0);
-  for (x = 0; x < WORLD_SIDE_LEN; x++)
-    {
-      for (y = 0; y < WORLD_SIDE_LEN; y++)
-	{
-	  for (z = 0; z < q; z++)
-	    {
-	      n = *(((unsigned char *) &mappoint[x][y]) + z);
-	      fprintf (ofile, _("mappoint[%d][%d]b%d=%d\n")
-		       ,x, y, z, n);
-	    }
-	  fprintf (ofile, _("mappointpol[%d][%d]=%d\n")
-		   ,x, y, (int) mappointpol[x][y]);
-	  fprintf (ofile, _("mappoint[%d][%d].type=%d\n")
-		   ,x, y, (int) mappoint[x][y].type);
-	}
-      prog_box ("", (90 * x) / WORLD_SIDE_LEN);
-    }
-  fprintf (ofile, _("Origx=%d\n"), main_screen_originx);
-  fprintf (ofile, _("Origy=%d\n"), main_screen_originy);
-  fprintf (ofile, _("Total time=%d\n"), total_time);
-  for (x = 0; x < MAX_NUMOF_SUBSTATIONS; x++)
-    {
-      fprintf (ofile, _("SustationX[%d]=%d\n"), x, substationx[x]);
-      fprintf (ofile, _("Substation[%d]=%d\n"), x, substationy[x]);
-    }
-  prog_box ("", 92);
-  fprintf (ofile, _("Num of substations=%d\n"), numof_substations);
-  for (x = 0; x < MAX_NUMOF_MARKETS; x++)
-    {
-      fprintf (ofile, _("MarketX[%d]=%d\n"), x, marketx[x]);
-      fprintf (ofile, _("MarketY[%d]=%d\n"), x, markety[x]);
-    }
-  prog_box ("", 94);
-  fprintf (ofile, _("numof_markets=%d\n"), numof_markets);
-  fprintf (ofile, _("people_pool=%d\n"), people_pool);
-  fprintf (ofile, _("total_money=%d\n"), total_money);
-  fprintf (ofile, _("income_tax_rate=%d\n"), income_tax_rate);
-  fprintf (ofile, _("coal_tax_rate=%d\n"), coal_tax_rate);
-  fprintf (ofile, _("dole_rate=%d\n"), dole_rate);
-  fprintf (ofile, _("transport_cost_rate=%d\n"), transport_cost_rate);
-  fprintf (ofile, _("goods_tax_rate=%d\n"), goods_tax_rate);
-  fprintf (ofile, _("export_tax=%d\n"), export_tax);
-  fprintf (ofile, _("export_tax_rate=%d\n"), export_tax_rate);
-  fprintf (ofile, _("import_cost=%d\n"), import_cost);
-  fprintf (ofile, _("import_cost_rate=%d\n"), import_cost_rate);
-  fprintf (ofile, _("tech_level=%d\n"), tech_level);
-  fprintf (ofile, _("tpopulation=%d\n"), tpopulation);
-  fprintf (ofile, _("tstarving_population=%d\n"), tstarving_population);
-  fprintf (ofile, _("tunemployed_population=%d\n"), tunemployed_population);
-  fprintf (ofile, _("waste_goods=%d\n"), waste_goods);
-  fprintf (ofile, _("power_made=%d\n"), power_made);
-  fprintf (ofile, _("power_used=%d\n"), power_used);
-  fprintf (ofile, -("coal_made=%d\n"), coal_made);
-  fprintf (ofile, _("coal_used=%d\n"), coal_used);
-  fprintf (ofile, _("goods_made=%d\n"), goods_made);
-  fprintf (ofile, _("goods_used=%d\n"), goods_used);
-  fprintf (ofile, _("ore_made=%d\n"), ore_made);
-  fprintf (ofile, _("ore_used=%d\n"), ore_used);
-  fprintf (ofile, _("diff_old_population=%d\n"), diff_old_population);
-  prog_box ("", 96);
-  prog_box ("", 98);
-  fprintf (ofile, _("rockets_launched=%d\n"), rockets_launched);
-  fprintf (ofile, _("rockets_launched_success=%d\n"), rockets_launched_success);
-  fprintf (ofile, _("coal_survey_done=%d\n"), coal_survey_done);
-  prog_box ("", 99);
-
-  fclose (ofile);
-  prog_box ("", 100);
-#endif
-}
-#endif /* 0 */
-
 
 void
 do_get_nw_server (void)
@@ -806,7 +707,7 @@ do_get_nw_server (void)
     Fgl_setfontcolors (TEXT_BG_COLOUR, TEXT_FG_COLOUR);
     refresh_main_screen ();
     suppress_ok_buttons = 1;
-    update_select_buttons ();
+    update_avail_modules (0);
     suppress_ok_buttons = 0;
     redraw_mouse ();
 }

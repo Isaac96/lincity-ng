@@ -13,12 +13,20 @@
 #ifdef ENABLE_NLS
 #include <libintl.h>
 #define _(String) gettext(String)
+#if defined (commentout)  /* GCS May 11, 2003 */
 #define N_(String) gettext_noop(String)
+#endif
+#define N_(String) String
 #else
 #define _(String) String
 #define N_(String) String
 #define textdomain(Domain)
 #define bindtextdomain(Package, Directory)
+#endif
+
+/* Windows needs this */
+#ifndef LC_MESSAGES
+#define LC_MESSAGES 1729
 #endif
 
 #endif	/* __lcintl_h__ */

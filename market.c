@@ -9,6 +9,7 @@
 #include "lctypes.h"
 #include "lin-city.h"
 #include "market.h"
+#include "stats.h"
 
 
 int
@@ -41,10 +42,8 @@ int
 put_jobs (int x, int y, int jobs)
 {
   int q;
-  if (numof_markets > 0)
-    {
-      for (q = 0; q < numof_markets; q++)
-	{
+  if (numof_markets > 0) {
+      for (q = 0; q < numof_markets; q++) {
 	  if (MP_INFO(marketx[q],markety[q]).int_2
 	      >= (MAX_JOBS_IN_MARKET - jobs))
 	    continue;
@@ -56,8 +55,9 @@ put_jobs (int x, int y, int jobs)
 	    }
 	}
     }
-  if (put_stuff (x, y, jobs, T_JOBS) != 0)
-    return (1);
+  if (put_stuff (x, y, jobs, T_JOBS) != 0) {
+      return (1);
+  }
   return (0);
 }
 
@@ -366,6 +366,7 @@ add_a_market (int x, int y)	/* add to marketx markety to list */
   markety[numof_markets] = y;
   numof_markets++;
   /* oh dear. Got to bootstap markets with jobs, otherwise power won't work */
+  /* GCS: Is this still true?  */
   MP_INFO(x,y).int_2 = 2000;
   return (1);
 }
@@ -448,15 +449,12 @@ do_market (int x, int y)
       else
 	MP_TYPE(x,y) = CST_MARKET_FULL;
     }
-  food_in_markets += MP_INFO(x,y).int_1;
+
   /* now employ some people */
   get_jobs (x, y, 1 + (extra_jobs / 5));
-  /* this is for the  pbar indicators */
-  jobs_in_markets += MP_INFO(x,y).int_2;
-  coal_in_markets += MP_INFO(x,y).int_3;
-  goods_in_markets += MP_INFO(x,y).int_4;
-  ore_in_markets += MP_INFO(x,y).int_5;
-  steel_in_markets += MP_INFO(x,y).int_6;
+
+  /* keep the pbars accurate */
+  inventory(x,y);
 }
 
 void
@@ -926,24 +924,24 @@ get_stuff4 (Map_Point_Info *map, int stuff, int stuff_type)
 int
 put_stuff (int x, int y, int stuff, int stuff_type)
 {
-  int res = 0;
-  short *type = &MP_TYPE(x,y);
-  Map_Point_Info *minfo = &MP_INFO(x,y);
-  switch (MP_SIZE(x,y))
+    int res = 0;
+    short *type = &MP_TYPE(x,y);
+    Map_Point_Info *minfo = &MP_INFO(x,y);
+    switch (MP_SIZE(x,y))
     {
     case 2:
-      res = put_stuff2 (minfo, type, stuff, stuff_type);
-      break;
+	res = put_stuff2 (minfo, type, stuff, stuff_type);
+	break;
     case 3:
-      res = put_stuff3 (minfo, type, stuff, stuff_type);
-      break;
+	res = put_stuff3 (minfo, type, stuff, stuff_type);
+	break;
     case 4:
-      res = put_stuff4 (minfo, type, stuff, stuff_type);
-      break;
+	res = put_stuff4 (minfo, type, stuff, stuff_type);
+	break;
     default:
-      do_error ("Bad area size in put_stuff()");
+	do_error ("Bad area size in put_stuff()");
     }
-  return (res);
+    return res;
 }
 
 

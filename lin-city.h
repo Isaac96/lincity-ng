@@ -125,11 +125,6 @@
 #define BORDERY 30
 #endif
 
-#define SELECT_BUTTONS_NEED_TECH
-/*
-  //#define USE_EXPANDED_FONT
-*/
-
 #define TEXT_FG_COLOUR  (white(24))
 #define TEXT_BG_COLOUR  105
 #define YN_DIALBOX_BG_COLOUR (red(10))
@@ -200,6 +195,9 @@
 #define MINI_SCREEN_HEALTH_COVER   (8)
 #define MINI_SCREEN_COAL_FLAG      (9)
 
+#define MAIN_SCREEN_NORMAL_FLAG    (1)
+#define MAIN_SCREEN_EQUALS_MINI    (2)
+
 #define SEED_RAND
 #define OLD_LC_SAVE_DIR "Lin-city"
 #if defined (WIN32)
@@ -210,7 +208,6 @@
 #define RESULTS_FILENAME "results"
 
 #define MAX_ICON_LEN 4096
-#define NUMOF_SELECT_BUTTONS 32
 #define WORLD_SIDE_LEN 100
 #define NUMOF_DAYS_IN_MONTH 100
 #define NUMOF_DAYS_IN_YEAR (NUMOF_DAYS_IN_MONTH*12)
@@ -239,9 +236,6 @@
 #define SAVE_BUTTON_W 32
 #define SAVE_BUTTON_H 32
 #endif
-
-#define TESTM_X 50
-#define TESTM_Y 428
 
 #define HELPERRORPAGE "error.hlp"
 #define HELPBACKGROUNDCOLOUR (white(8))
@@ -458,6 +452,7 @@
 #define ROCKET_LAUNCH_GOOD      2
 #define ROCKET_LAUNCH_EVAC      3
 
+#define TIP_DEGRADE_TIME 200 * NUMOF_DAYS_IN_YEAR
 
 #define MAX_WASTE_AT_RECYCLE 20000
 #define BURN_WASTE_AT_RECYCLE (MAX_WASTE_AT_RECYCLE/200)
@@ -634,14 +629,6 @@
 //#define MARKET_CB_W (18*8)
 #define MARKET_CB_W (17*8 - 2)
 #define MARKET_CB_H (23*8)
-
-#if defined (commentout)
-#define SELECT_BUTTON_WIN_X 1
-#define SELECT_BUTTON_WIN_W 56
-#define SELECT_BUTTON_WIN_Y 1
-#define SELECT_BUTTON_WIN_H 392
-#endif
-#define NUMOF_SELECT_BUTTONS_DOWN 16
 
 #define SCROLL_LONG_COUNT 5
 #define SCROLL_RIGHT_BUTTON_X 100
@@ -1175,7 +1162,6 @@ extern void start_image_text (void);
 extern void si_scroll_text (void);
 extern char si_next_char (FILE *);
 extern void get_real_time (void);
-//extern void time_for_year (void);
 extern void debug_writeval (int);
 extern int cheat (void);
 extern void print_cheat (void);
@@ -1184,7 +1170,6 @@ extern void order_select_buttons (void);
 extern void lincityrc (void);
 extern void check_for_old_save_dir (void);
 extern int count_groups (int);
-/* extern void count_all_groups (void); */
 extern int compile_results (void);
 extern void print_results (void);
 extern void mail_results (void);
@@ -1192,9 +1177,6 @@ extern void window_results (void);
 extern void init_path_strings (void);
 extern void lc_usleep (unsigned long);
 extern void dump_tcore (void);
-#ifdef MP_SANITY_CHECK
-extern void sanity_check (void);
-#endif
 #ifndef LC_X11
 extern void parse_args (int, char **);
 #endif
@@ -1204,12 +1186,6 @@ extern void check_endian (void);
 extern void eswap32 (int *);
 extern void eswap16 (unsigned short *);
 extern void malloc_failure (void);
-
-/*
-  clistubs
-  ********
-*/
-extern int do_time_step (void);
 
 /*
   fileutil
@@ -1267,7 +1243,6 @@ extern int select_water_type (int, int, int, int);
 extern int select_track_type (int, int, int, int);
 extern int select_rail_type (int, int, int, int);
 extern int select_road_type (int, int, int, int);
-extern void screen_setup (void);
 extern void update_select_buttons (void);
 extern void draw_main_window_box (int);
 extern void draw_select_button_graphic (int, char *);
