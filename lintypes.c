@@ -3,19 +3,22 @@
  * This file is part of lincity.
  * Lincity is copyright (c) I J Peters 1995-1997, (c) Greg Sharp 1997-2001.
  * ---------------------------------------------------------------------- */
+#include "lcconfig.h"
 #include "lin-city.h"
 #include "engglobs.h"
 #include "lctypes.h"
 #include "shrglobs.h"
 #include "lintypes.h"
 #include "lcintl.h"
+#include "fileutil.h"
+#include "readpng.h"
 
 struct TYPE main_types[NUM_OF_TYPES];
 
 struct GROUP main_groups[NUM_OF_GROUPS] =
 {
     /* 0 */
-    { _("Empty"),       /* name */
+    { N_("Empty"),       /* name */
       FALSE,            /* need credit? */
       GROUP_BARE,       /* group number */
       1,                /* size */
@@ -27,7 +30,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       0                 /* tech */
     },
     /* 1 */
-    { _("Power line"),
+    { N_("Power line"),
       FALSE,                           /* need credit? */
       GROUP_POWER_LINE,
       1,                               /* size */
@@ -39,7 +42,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_POWER_LINE_TECH
     },
     /* 2 */
-    { _("Solar PS"),
+    { N_("Solar PS"),
       TRUE,                            /* need credit? */
       GROUP_SOLAR_POWER,
       4,                               /* size */
@@ -51,7 +54,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_SOLAR_POWER_TECH
     },
     /* 3 */
-    { _("Substation"),
+    { N_("Substation"),
       FALSE,                           /* need credit? */
       GROUP_SUBSTATION,
       2,                               /* size */
@@ -63,7 +66,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_SUBSTATION_TECH
     },
     /* 4 */
-    { _("Residential LL"),
+    { N_("Residential LL"),
       FALSE,                           /* need credit? */
       GROUP_RESIDENCE_LL,
       3,                               /* size */
@@ -75,7 +78,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_RESIDENCE_LL_TECH
     },
     /* 5 */
-    { _("Farm"),
+    { N_("Farm"),
       FALSE,                           /* need credit? */
       GROUP_ORGANIC_FARM,
       4,                               /* size */
@@ -87,7 +90,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_ORGANIC_FARM_TECH
     },
     /* 6 */
-    { _("Market"),
+    { N_("Market"),
       FALSE,                           /* need credit? */
       GROUP_MARKET,
       2,                               /* size */
@@ -99,7 +102,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_MARKET_TECH
     },
     /* 7 */
-    { _("Track"),
+    { N_("Track"),
       FALSE,                           /* need credit? */
       GROUP_TRACK,
       1,                               /* size */
@@ -111,7 +114,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_TRACK_TECH
     },
     /* 8 */
-    { _("Coalmine"),
+    { N_("Coalmine"),
       FALSE,                           /* need credit? */
       GROUP_COALMINE,
       4,                               /* size */
@@ -123,7 +126,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_COALMINE_TECH
     },
     /* 9 */
-    { _("Railway"),
+    { N_("Railway"),
       FALSE,                           /* need credit? */
       GROUP_RAIL,
       1,                               /* size */
@@ -135,7 +138,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_RAIL_TECH
     },
     /* 10 */
-    { _("Coal PS"),
+    { N_("Coal PS"),
       FALSE,                           /* need credit? */
       GROUP_COAL_POWER,
       4,                               /* size */
@@ -147,7 +150,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_COAL_POWER_TECH
     },
     /* 11 */
-    { _("Road"),
+    { N_("Road"),
       FALSE,                           /* need credit? */
       GROUP_ROAD,
       1,                               /* size */
@@ -159,7 +162,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_ROAD_TECH
     },
     /* 12 */
-    { _("Lt. Industry"),
+    { N_("Lt. Industry"),
       FALSE,                           /* need credit? */
       GROUP_INDUSTRY_L,
       3,                               /* size */
@@ -171,7 +174,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_INDUSTRY_L_TECH
     },
     /* 13 */
-    { _("University"),
+    { N_("University"),
       FALSE,                           /* need credit? */
       GROUP_UNIVERSITY,
       3,                               /* size */
@@ -183,7 +186,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_UNIVERSITY_TECH
     },
     /* 14 */
-    { _("Commune"),
+    { N_("Commune"),
       FALSE,                           /* need credit? */
       GROUP_COMMUNE,
       4,                               /* size */
@@ -195,7 +198,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_COMMUNE_TECH
     },
     /* 15 */
-    { _("Ore mine"),
+    { N_("Ore mine"),
       FALSE,                           /* need credit? */
       GROUP_OREMINE,
       4,                               /* size */
@@ -207,7 +210,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_OREMINE_TECH
     },
     /* 16 */
-    { _("Rubbish tip"),
+    { N_("Rubbish tip"),
       FALSE,                           /* need credit? */
       GROUP_TIP,
       4,                               /* size */
@@ -219,7 +222,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_TIP_TECH
     },
     /* 17 */
-    { _("Port"),
+    { N_("Port"),
       FALSE,                           /* need credit? */
       GROUP_PORT,
       4,                               /* size */
@@ -231,7 +234,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_PORT_TECH
     },
     /* 18 */
-    { _("Hv. Industry"),
+    { N_("Hv. Industry"),
       FALSE,                           /* need credit? */
       GROUP_INDUSTRY_H,
       4,                               /* size */
@@ -243,7 +246,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_INDUSTRY_H_TECH
     },
     /* 19 */
-    { _("Park"),
+    { N_("Park"),
       TRUE,                           /* need credit? */
       GROUP_PARKLAND,
       1,                               /* size */
@@ -255,7 +258,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_PARKLAND_TECH
     },
     /* 20 */
-    { _("Recycle"),
+    { N_("Recycle"),
       TRUE,                           /* need credit? */
       GROUP_RECYCLE,
       2,                               /* size */
@@ -267,7 +270,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_RECYCLE_TECH
     },
     /* 21 */
-    { _("Water"),
+    { N_("Water"),
       FALSE,                           /* need credit? */
       GROUP_WATER,
       1,                               /* size */
@@ -279,7 +282,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_WATER_TECH
     },
     /* 22 */
-    { _("Health centre"),
+    { N_("Health centre"),
       FALSE,                           /* need credit? */
       GROUP_HEALTH,
       2,                               /* size */
@@ -291,7 +294,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_HEALTH_TECH
     },
     /* 23 */
-    { _("Rocket pad"),
+    { N_("Rocket pad"),
       TRUE,                            /* need credit? */
       GROUP_ROCKET,
       4,                               /* size */
@@ -303,7 +306,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_ROCKET_TECH
     },
     /* 24 */
-    { _("Windmill"),
+    { N_("Windmill"),
       FALSE,                           /* need credit? */
       GROUP_WINDMILL,
       2,                               /* size */
@@ -315,7 +318,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_WINDMILL_TECH
     },
     /* 25 */
-    { _("Monument"),
+    { N_("Monument"),
       FALSE,                           /* need credit? */
       GROUP_MONUMENT,
       2,                               /* size */
@@ -327,7 +330,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_MONUMENT_TECH
     },
     /* 26 */
-    { _("School"),
+    { N_("School"),
       FALSE,                           /* need credit? */
       GROUP_SCHOOL,
       2,                               /* size */
@@ -339,7 +342,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_SCHOOL_TECH
     },
     /* 27 */
-    { _("Blacksmith"),
+    { N_("Blacksmith"),
       FALSE,                           /* need credit? */
       GROUP_BLACKSMITH,
       2,                               /* size */
@@ -351,7 +354,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_BLACKSMITH_TECH
     },
     /* 28 */
-    { _("Mill"),
+    { N_("Mill"),
       FALSE,                           /* need credit? */
       GROUP_MILL,
       2,                               /* size */
@@ -363,7 +366,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_MILL_TECH
     },
     /* 29 */
-    { _("Pottery"),
+    { N_("Pottery"),
       FALSE,                           /* need credit? */
       GROUP_POTTERY,
       2,                               /* size */
@@ -375,7 +378,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_POTTERY_TECH
     },
     /* 30 */
-    { _("Fire sta'n"),
+    { N_("Fire sta'n"),
       FALSE,                           /* need credit? */
       GROUP_FIRESTATION,
       2,                               /* size */
@@ -387,7 +390,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_FIRESTATION_TECH
     },
     /* 31 */
-    { _("Cricket pitch"),
+    { N_("Cricket pitch"),
       FALSE,                           /* need credit? */
       GROUP_CRICKET,
       2,                               /* size */
@@ -400,7 +403,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
     },
     /* 32 */
     /* there is no button for this. */
-    { _("Burnt"),
+    { N_("Burnt"),
       FALSE,                           /* need credit? */
       GROUP_BURNT,
       1,                               /* size */
@@ -413,7 +416,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
     },
     /* 33 */
     /* there is no button for this. */
-    { _("Shanty town"),
+    { N_("Shanty town"),
       FALSE,                           /* need credit? */
       GROUP_SHANTY,
       2,                               /* size */
@@ -426,7 +429,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
     },
     /* 34 */
     /* there is no button for this. */
-    { _("Fire"),
+    { N_("Fire"),
       FALSE,                           /* need credit? */
       GROUP_FIRE,
       1,                               /* size */
@@ -439,7 +442,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
     },
     /* 35 */
     /* there is no button for this. */
-    { _("Used"),
+    { N_("Used"),
       FALSE,                           /* need credit? */
       GROUP_USED,
       1,                               /* size */
@@ -451,7 +454,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_USED_TECH
     },
     /* 36 */
-    { _("Residential ML"),
+    { N_("Residential ML"),
       FALSE,                           /* need credit? */
       GROUP_RESIDENCE_ML,
       3,                               /* size */
@@ -463,7 +466,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_RESIDENCE_ML_TECH
     },
     /* 37 */
-    { _("Residential HL"),
+    { N_("Residential HL"),
       FALSE,                           /* need credit? */
       GROUP_RESIDENCE_HL,
       3,                               /* size */
@@ -475,7 +478,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_RESIDENCE_HL_TECH
     },
     /* 38 */
-    { _("Residential"),
+    { N_("Residential"),
       FALSE,                           /* need credit? */
       GROUP_RESIDENCE_LH,
       3,                               /* size */
@@ -487,7 +490,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_RESIDENCE_LH_TECH
     },
     /* 39 */
-    { _("Residential"),
+    { N_("Residential"),
       FALSE,                           /* need credit? */
       GROUP_RESIDENCE_MH,
       3,                               /* size */
@@ -499,7 +502,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
       GROUP_RESIDENCE_MH_TECH
     },
     /* 40 */
-    { _("Residential"),
+    { N_("Residential"),
       FALSE,                           /* need credit? */
       GROUP_RESIDENCE_LH,
       3,                               /* size */
@@ -512,7 +515,7 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
     },
     /* 41 */
     /* End of Data */
-    { _("EOF"),
+    { "EOF",
       FALSE,                           /* need credit? */
       0,
       0,                               /* size */
@@ -525,9 +528,15 @@ struct GROUP main_groups[NUM_OF_GROUPS] =
     }
 };
 
-
 void init_types(void)
 {
+    char png_file[LC_PATH_MAX], txt_file[LC_PATH_MAX];
+    sprintf (png_file, "%s%c%s", opening_path, PATH_SLASH, "icons.png");
+    sprintf (txt_file, "%s%c%s", opening_path, PATH_SLASH, "iconlist.txt");
+
+    load_png_graphics (txt_file,png_file);
+
+#if defined (commentout)
     main_types[CST_GREEN].group=GROUP_BARE;
     main_types[CST_GREEN].graphic=load_graphic(CST_GREEN_G);
 
@@ -702,7 +711,6 @@ void init_types(void)
     main_types[CST_FARM_O16].group=GROUP_ORGANIC_FARM;
     main_types[CST_FARM_O16].graphic=load_graphic(CST_FARM_O16_G);
 
-
     main_types[CST_MARKET_EMPTY].group=GROUP_MARKET;
     main_types[CST_MARKET_EMPTY].graphic
 	    =load_graphic(CST_MARKET_EMPTY_G);
@@ -767,7 +775,6 @@ void init_types(void)
     main_types[CST_COALMINE_FULL].group=GROUP_COALMINE;
     main_types[CST_COALMINE_FULL].graphic
 	    =load_graphic(CST_COALMINE_FULL_G);
-
 
     main_types[CST_RAIL_LR].group=GROUP_RAIL;
     main_types[CST_RAIL_LR].graphic=load_graphic(CST_RAIL_LR_G);
@@ -907,8 +914,6 @@ void init_types(void)
     main_types[CST_INDUSTRY_L_H4].graphic
 	    =load_graphic(CST_INDUSTRY_L_H4_G);
 
-
-
     main_types[CST_COMMUNE_1].group=GROUP_COMMUNE;
     main_types[CST_COMMUNE_1].graphic=load_graphic(CST_COMMUNE_1_G);
 
@@ -950,7 +955,6 @@ void init_types(void)
 
     main_types[CST_COMMUNE_14].group=GROUP_COMMUNE;
     main_types[CST_COMMUNE_14].graphic=load_graphic(CST_COMMUNE_14_G);
-
 
     main_types[CST_UNIVERSITY].group=GROUP_UNIVERSITY;
     main_types[CST_UNIVERSITY].graphic=load_graphic(CST_UNIVERSITY_G);
@@ -1006,10 +1010,8 @@ void init_types(void)
     main_types[CST_TIP_8].group=GROUP_TIP;
     main_types[CST_TIP_8].graphic=load_graphic(CST_TIP_8_G);
 
-
     main_types[CST_EX_PORT].group=GROUP_PORT;
     main_types[CST_EX_PORT].graphic=load_graphic(CST_EX_PORT_G);
-
 
     main_types[CST_INDUSTRY_H_C].group=GROUP_INDUSTRY_H;
     main_types[CST_INDUSTRY_H_C].graphic
@@ -1112,7 +1114,6 @@ void init_types(void)
     main_types[CST_INDUSTRY_H_H8].graphic
 	    =load_graphic(CST_INDUSTRY_H_H8_G);
 
-
     main_types[CST_PARKLAND_PLANE].group=GROUP_PARKLAND;
     main_types[CST_PARKLAND_PLANE].graphic
 	    =load_graphic(CST_PARKLAND_PLANE_G);
@@ -1174,7 +1175,6 @@ void init_types(void)
     main_types[CST_WATER_LURD].group=GROUP_WATER;
     main_types[CST_WATER_LURD].graphic=load_graphic(CST_WATER_LURD_G);
 
-
     main_types[CST_HEALTH].group=GROUP_HEALTH;
     main_types[CST_HEALTH].graphic=load_graphic(CST_HEALTH_G);
 
@@ -1204,6 +1204,7 @@ void init_types(void)
     main_types[CST_ROCKET_FLOWN].group=GROUP_ROCKET;
     main_types[CST_ROCKET_FLOWN].graphic
 	    =load_graphic(CST_ROCKET_FLOWN_G);
+
 
     main_types[CST_BURNT].group=GROUP_BURNT;
     main_types[CST_BURNT].graphic=load_graphic(CST_BURNT_G);
@@ -1256,7 +1257,6 @@ void init_types(void)
     main_types[CST_WINDMILL_3_W].graphic
 	    =load_graphic(CST_WINDMILL_3_W_G);
 
-
     main_types[CST_MONUMENT_0].group=GROUP_MONUMENT;
     main_types[CST_MONUMENT_0].graphic=load_graphic(CST_MONUMENT_0_G);
 
@@ -1274,7 +1274,6 @@ void init_types(void)
 
     main_types[CST_MONUMENT_5].group=GROUP_MONUMENT;
     main_types[CST_MONUMENT_5].graphic=load_graphic(CST_MONUMENT_5_G);
-
 
     main_types[CST_SCHOOL].group=GROUP_SCHOOL;
     main_types[CST_SCHOOL].graphic=load_graphic(CST_SCHOOL_G);
@@ -1403,7 +1402,6 @@ void init_types(void)
     main_types[CST_FIRESTATION_10].graphic
 	    =load_graphic(CST_FIRESTATION_10_G);
 
-
     main_types[CST_CRICKET_1].group=GROUP_CRICKET;
     main_types[CST_CRICKET_1].graphic
 	    =load_graphic(CST_CRICKET_1_G);
@@ -1472,6 +1470,7 @@ void init_types(void)
 
     main_types[CST_SHANTY].group=GROUP_SHANTY;
     main_types[CST_SHANTY].graphic=load_graphic(CST_SHANTY_G);
+#endif
 
     main_types[CST_USED].group=GROUP_USED;
     main_types[CST_USED].graphic=0;         /* Won't be dereferenced! */
@@ -1511,12 +1510,11 @@ get_type_name (short type, char * s)
 {
      short g;
      g = get_group_of_type (type);
-     strcpy(s,main_groups[g].name);
-     printf(s);
+     strcpy (s, _(main_groups[g].name));
 }
 
 int
 get_type_cost (short type)
 {
-    return get_group_cost (get_group_of_type (type));
+    return get_group_cost ((short) get_group_of_type (type));
 }

@@ -13,12 +13,30 @@
 #include "engglobs.h"
 #include "cliglobs.h"
 #include "simulate.h"
-#include "sernet.h"
-#include "clistubs.h"
 #include "lcintl.h"
 #include "power.h"
+#include "mouse.h"
+#include "module_buttons.h"
+#include "pbar.h"
+#include "stats.h"
+#include "mps.h"
+#include "screen.h"
+#include "dialbox.h"
 
 extern int selected_type_cost;
+
+int 
+adjust_money(int value)
+{
+    total_money += value;
+    print_total_money();
+    mappoint_stats(-3,-3,-3);
+    update_pbar (PMONEY, total_money, 0);
+    refresh_pbars(); /* This could be more specific */
+    return total_money;
+}
+
+int is_real_river (int x, int y);
 
 int
 no_credit_build (int selected_group)
@@ -59,7 +77,7 @@ no_credit_build (int selected_group)
 }
 
 int 
-engine_place_item (int x, int y, short type)
+place_item (int x, int y, short type)
 {
     int group;
     int size;
@@ -75,24 +93,30 @@ engine_place_item (int x, int y, short type)
     }
 
     /* Not enough slots in the substation array */
-    if (group == GROUP_SUBSTATION || group == GROUP_WINDMILL)
+
+    switch (group) {
+    case GROUP_SUBSTATION:
+    case GROUP_WINDMILL:
+    {
 	if (add_a_substation (x, y) == 0)
 	    return -3;
-
-    if (group == GROUP_PORT) {
+    } break;
+    case GROUP_PORT:
+    {
 	if (is_real_river (x + 4, y) != 1 
 	    || is_real_river (x + 4, y + 1) != 1
 	    || is_real_river (x + 4, y + 2) != 1 
 	    || is_real_river (x + 4, y + 3) != 1) {
 	    return -2;
 	}
-    }
-
-    if (group == GROUP_COMMUNE)
+    } break;
+    case GROUP_COMMUNE:
+    {
 	numof_communes++;
-
-    if (group == GROUP_MARKET) {
-	/* Not enough slots in the market array */
+    } break;
+    case GROUP_MARKET:
+    {
+	/* Test for enough slots in the market array */
 	if (add_a_market (x, y) == 0)
 	    return -3;
 	MP_INFO(x,y).flags += (FLAG_MB_FOOD | FLAG_MB_JOBS
@@ -100,7 +124,88 @@ engine_place_item (int x, int y, short type)
 			       | FLAG_MB_GOODS | FLAG_MS_FOOD | FLAG_MS_JOBS
 			       | FLAG_MS_COAL | FLAG_MS_GOODS | FLAG_MS_ORE
 			       | FLAG_MS_STEEL);
+    } break;
+    case GROUP_TIP:
+    {
+	/* Don't build a tip if there has already been one.  If we succeed,
+	   mark the spot permanently by "doubling" the ore reserve */
+	int i,j;
+	int prev_tip = 0;
+	for (i=0;i<3;i++) {
+	    for (j=0;j<3;j++) {
+		if (MP_INFO(x+i,y+j).ore_reserve > ORE_RESERVE) {
+		    prev_tip = 1;
+		    break;
+		}
+	    }
+	}
+	if (prev_tip) {
+	    dialog_box(red(12),3,
+		       0,0,_("You can't build a tip here"),
+		       0,0,_("This area was once a landfill"),
+		       2,' ',_("OK"));
+	    return -4;
+	} else {
+	    for (i=0;i<3;i++) {
+		for (j=0;j<3;j++) {
+		    MP_INFO(x+i,y+j).ore_reserve = ORE_RESERVE * 2;
+		}
+	    }
+	}
+#if defined (commentout)
+	if (MP_INFO(x,y).ore_reserve > ORE_RESERVE) {
+	    dialog_box(red(12),3,
+		       0,0,_("You can't build a tip here"),
+		       0,0,_("This is already landfill"),
+		       2,' ',_("OK"));
+	    return -4;
+	} else {
+	    MP_INFO(x,y).ore_reserve = ORE_RESERVE * 2;
+	}
+#endif
+    } break;
+    case GROUP_OREMINE:
+    {
+	/* Don't allow new mines on old mines or old tips */
+	/* GCS: mines over old mines is OK if there is enough remaining 
+	        ore, as is the case when there is parital overlap. */
+	int i,j;
+	int prev_tip = 0;
+	int total_ore = 0;
+	for (i=0;i<3;i++) {
+	    for (j=0;j<3;j++) {
+		total_ore += MP_INFO(x+i,y+j).ore_reserve;
+		if (MP_INFO(x+i,y+j).ore_reserve > ORE_RESERVE) {
+		    prev_tip = 1;
+		    break;
+		}
+	    }
+	}
+	if (prev_tip) {
+	    dialog_box(red(12),3,
+		       0,0,_("You can't build a mine here"),
+		       0,0,_("This area was once a landfill"),
+		       2,' ',_("OK"));
+	    return -4;
+	}
+	if (total_ore < MIN_ORE_RESERVE_FOR_MINE) {
+	    dialog_box(red(12),3,
+		       0,0,_("You can't build a mine here"),
+		       0,0,_("There is no ore left at this site"),
+		       2,' ',_("OK"));
+	    return -4;
+	}
+#if defined (commentout)
+	if (MP_INFO(x,y).ore_reserve != ORE_RESERVE) {
+	    dialog_box(red(12),3,
+		       0,0,_("You can't build a mine here"),
+		       0,0,_("This was already a mine or tip"),
+		       2,' ',_("OK"));
+	    return -4;
+	} 
+#endif
     }
+    } /* end case */
 
     /* Store last_built for refund on "mistakes" */
     last_built_x = x;
@@ -140,14 +245,13 @@ engine_place_item (int x, int y, short type)
 
     connect_transport (x-2,y-2,x+size+1,y+size+1);
 
-    selected_type_cost = get_type_cost (type);
-    total_money -= selected_type_cost;
+    adjust_money(-selected_module_cost);
     map_power_grid();
     return 0;
 }
 
 int 
-engine_bulldoze_item (int x, int y)
+bulldoze_item (int x, int y)
 {
     int g, size;
 
@@ -165,7 +269,7 @@ engine_bulldoze_item (int x, int y)
     }
     else if (g == GROUP_SHANTY) {
 	fire_area (x, y);
-	total_money -= GROUP_SHANTY_BUL_COST;
+	adjust_money(-GROUP_SHANTY_BUL_COST);
     }
     else if (g == GROUP_FIRE) {
 	if (MP_INFO(x,y).int_2 >= FIRE_LENGTH)
@@ -173,10 +277,10 @@ engine_bulldoze_item (int x, int y)
 	MP_INFO(x,y).int_2 = FIRE_LENGTH + 1;
 	MP_TYPE(x,y) = CST_FIRE_DONE1;
 	MP_GROUP(x,y) = GROUP_BURNT;
-	total_money -= GROUP_BURNT_BUL_COST;
+	adjust_money(-GROUP_BURNT_BUL_COST);
     }
     else {
-	total_money -= main_groups[g].bul_cost;
+	adjust_money(-main_groups[g].bul_cost);
 	do_bulldoze_area (CST_GREEN, x, y);
 	if (g == GROUP_OREMINE)
 	{
@@ -187,9 +291,6 @@ engine_bulldoze_item (int x, int y)
 			do_bulldoze_area (CST_WATER, x + i, y + j);
 	}
     }
-
-    broadcast_map_types_region (x, y, size);
-
     return size;  /* No longer used... */
 }
 
@@ -447,7 +548,6 @@ do_residence (int x, int y)
     MP_INFO(x,y).int_4 = brm;
     MP_INFO(x,y).int_5 = drm;
 }
-
 
 
 void
@@ -772,6 +872,7 @@ do_industry_h (int x, int y)
      // int_4 is the coal in store
      // int_5 is the percent max production last month
      // int_6 is the time of the next animation frame.
+     // int_7 is whether we get power from coal (1) or elsewhere (0)
    */
 
   /* See if there's any raw materials (ore) on the road/rail. If so, use some
@@ -842,6 +943,7 @@ do_industry_h (int x, int y)
   ore_used += steel * ORE_MAKE_STEEL;
   /* check there was enough electricity, or back up to 1/10 of the 
      production. ie same work and material useage for less production. 
+     If no real power, see if we have enough coal to generate electricity.
   */
   if (get_power (x, y, steel * POWER_MAKE_STEEL, 1) == 0)
     {
@@ -855,10 +957,14 @@ do_industry_h (int x, int y)
 	  MP_INFO(x,y).int_4 -= (steel * 2);
 	  coal_used += (steel * 2);
 	  MP_INFO(x,y).flags |= FLAG_POWERED;
+	  MP_INFO(x,y).int_7 = 1;
 	}
     }
-  else
-    MP_INFO(x,y).flags |= FLAG_POWERED;
+  else 
+    {
+      MP_INFO(x,y).flags |= FLAG_POWERED;
+      MP_INFO(x,y).int_7 = 0;
+    }
   MP_INFO(x,y).int_1 += steel;
   MP_INFO(x,y).int_2 += steel;
   /* now sell the steel to the road/rail */
@@ -1427,7 +1533,6 @@ do_oremine (int x, int y)
 		  /* maybe want an ore tax? */
 		  yy = ye;
 		  xx = xe;	/* break out */
-
 		}
     }
 
@@ -1544,12 +1649,19 @@ do_oremine (int x, int y)
 	  MP_TYPE(x,y) = CST_OREMINE_1;
 	  break;
 	}
-      if (MP_INFO(x,y).int_2 <= 0)
-	{
-	  do_bulldoze_area (CST_WATER, x, y);
-	  connect_rivers ();
-	  broadcast_map_types_region (x, y, 4);
-	  refresh_main_screen ();
+	if (MP_INFO(x,y).int_2 <= 0) {
+#if defined (commentout)
+	    do_bulldoze_area (CST_GREEN, x, y);
+	    place_item(x,y,CST_TIP_0);
+#endif
+	    int i,j;
+	    for (j = 0; j < 4; j++) {
+		for (i = 0; i < 4; i++) {
+		    do_bulldoze_area (CST_WATER, x+i, y+j);
+		}
+	    }
+	    connect_rivers ();
+	    refresh_main_screen ();
 	}
     }
 }
@@ -1616,7 +1728,6 @@ do_commune (int x, int y)
       else if (MP_TYPE(x,y) <= CST_COMMUNE_7)
 	MP_TYPE(x,y) += 7;
       if (MP_INFO(x,y).int_3 > 0)	/*  >0% */
-
 	{
 	  MP_INFO(x,y).int_3 = 0;
 	  if (--MP_INFO(x,y).int_4 < 0)
@@ -1627,10 +1738,8 @@ do_commune (int x, int y)
 	  MP_INFO(x,y).int_3 = 0;
 	  MP_INFO(x,y).int_4++;
 	  if (MP_INFO(x,y).int_4 > 120)	/* 10 years */
-
 	    {
 	      do_bulldoze_area (CST_PARKLAND_PLANE, x, y);
-	      broadcast_map_types_region (x, y, 4);
 	      return;
 	    }
 	}
@@ -2418,10 +2527,9 @@ do_rocket_pad (int x, int y)
 	MP_TYPE(x,y) = CST_ROCKET_4;
     else if (MP_INFO(x,y).int_4 >= (100 * ROCKET_PAD_LAUNCH) / 100) {
 	MP_TYPE(x,y) = CST_ROCKET_5;
-	update_main_screen ();
-	broadcast_rocket_built (x,y);
+	update_main_screen (0);
 	if (ask_launch_rocket_now (x,y)) {
-	    engine_launch_rocket (x,y);
+	    launch_rocket (x,y);
 	}
 	/* so we don't get get our money back when we bulldoze. */
 	if (x == last_built_x && y == last_built_y) {
@@ -2432,16 +2540,16 @@ do_rocket_pad (int x, int y)
 }
 
 void
-engine_launch_rocket (int x, int y)
+launch_rocket (int x, int y)
 {
     int i, r, xx, yy, xxx, yyy;
     rockets_launched++;
     MP_TYPE(x,y) = CST_ROCKET_FLOWN;
-    update_main_screen ();
+    update_main_screen (0);
     r = rand () % MAX_TECH_LEVEL;
     if (r > tech_level || rand () % 100 > (rockets_launched * 15 + 25)) {
 	/* the launch failed */
-	broadcast_rocket_fired (x, y, ROCKET_LAUNCH_BAD);
+	display_rocket_result_dialog (ROCKET_LAUNCH_BAD);
 	rockets_launched_success = 0;
 	xx = ((rand () % 40) - 20) + x;
 	yy = ((rand () % 40) - 20) + y;
@@ -2460,60 +2568,82 @@ engine_launch_rocket (int x, int y)
     } else {
 	rockets_launched_success++;
 	if (rockets_launched_success > 5) {
-	    broadcast_rocket_fired (x, y, ROCKET_LAUNCH_EVAC);
 	    remove_people (1000);
+	    if (people_pool || housed_population)
+	      display_rocket_result_dialog (ROCKET_LAUNCH_EVAC);
 	} else {
-	    broadcast_rocket_fired (x, y, ROCKET_LAUNCH_GOOD);
+	    display_rocket_result_dialog (ROCKET_LAUNCH_GOOD);
 	}
     }
 }
 
-
 void
 remove_people (int num)
 {
+#if defined (commentout)
   int x, y, f;
   time_t t;
   f = 1;
   t = time (0);
-  while (f && (num > 0))
-    {
-      f = 0;
+  while (f && (num > 0)) {
       for (y = 0; y < WORLD_SIDE_LEN; y++)
 	for (x = 0; x < WORLD_SIDE_LEN; x++)
 	  if (MP_GROUP_IS_RESIDENCE(x,y) && MP_INFO(x,y).population > 0)
 	    {
-	      f = 1;
 	      MP_INFO(x,y).population--;
+	      // f = 1;
+	      f |= (MP_INFO(x,y).population > 0);
 	      num--;
 	      total_evacuated++;
 	    }
-    }
-  while (num > 0 && people_pool > 0)
-    {
+  }
+  while (num > 0 && people_pool > 0) {
       num--;
       total_evacuated++;
       people_pool--;
-    }
-  if (num > 0)			/* last ship wasn't full so everyone has gone. */
+  }
+#endif
 
+  int x, y;
+  /* reset housed population so that we can display it correctly */
+  housed_population = 1;
+  while (housed_population && (num > 0)) {
+      housed_population = 0;
+      for (y = 0; y < WORLD_SIDE_LEN; y++)
+	for (x = 0; x < WORLD_SIDE_LEN; x++)
+	  if (MP_GROUP_IS_RESIDENCE(x,y) && MP_INFO(x,y).population > 0) {
+	      MP_INFO(x,y).population--;
+	      housed_population += MP_INFO(x,y).population;
+	      num--;
+	      total_evacuated++;
+	  }
+  }
+  while (num > 0 && people_pool > 0) {
+      num--;
+      total_evacuated++;
+      people_pool--;
+  }
+
+  refresh_population_text ();
+
+#if defined (commentout)
+/* last ship wasn't full so everyone has gone. */
+  if (num > 0)
     {
       if (t > HOF_START && t < HOF_STOP)
 	ok_dial_box ("launch-gone-mail.mes", GOOD, 0L);
       else
 	ok_dial_box ("launch-gone.mes", GOOD, 0L);
       housed_population = 0;
-      /*
-         //     if (t>HOF_START && t<HOF_STOP)
-         //        if (yn_dial_box("Mail the LinCity hall of fame?"
-         //          ,"If your system can send mail, you can"
-         //          ,"automatically be added to the hall of fame."
-         //          ,"www.floot.demon.co.uk/lc-hof.html")!=0)
-         //          mail_results();
-       */
     }
-}
+#endif
 
+  /* Note that the previous test was inaccurate.  There could be 
+     exactly 1000 people left. */
+  if (!housed_population && !people_pool) {
+    ok_dial_box ("launch-gone.mes", GOOD, 0L);
+  }
+}
 
 void
 do_monument (int x, int y)
@@ -3218,9 +3348,6 @@ do_fire (int x, int y)
 	MP_TYPE(x,y) = CST_FIRE_DONE2;
       else
 	MP_TYPE(x,y) = CST_FIRE_DONE1;
-      if (old_type != MP_TYPE(x,y)) {
-	broadcast_map_types_region (x, y, 1);
-      }
       return;
     }
   MP_INFO(x,y).int_2++;
@@ -3388,8 +3515,7 @@ add_a_shanty (void)
       r = spiral_find_group (x, y, GROUP_SHANTY);
       if (r == -1)
 	{
-	  printf (
-		   "Looked for a shanty, without any! x=%d y=%d\n", x, y);
+	  printf ("Looked for a shanty, without any! x=%d y=%d\n", x, y);
 	  return;
 	}
       y = r / WORLD_SIDE_LEN;
@@ -3425,8 +3551,6 @@ add_a_shanty (void)
       x = r % WORLD_SIDE_LEN;
     }
   set_mappoint (x, y, CST_SHANTY);
-  /* GCS FIX: Client can't update numof_shanties this way. */
-  broadcast_map_types_region (x, y, 2);
   numof_shanties++;
 }
 
@@ -3499,10 +3623,23 @@ do_tip (int x, int y)
      // int_1 is the amount of waste on the site.
      // int_2 if the amount that has flowed in so far this month
      // int_3 is the amount stored last month.
+     // int_4 counts up starting when tip fills, controlling how
+              long until the land is useful again.
    */
   int i;
-  if (MP_TYPE(x,y) == CST_TIP_8)
-    return;
+
+/* XXX: put this in a header somewhere */
+
+/* If the tip is full, age it until it degrades into useful soil */
+
+  if (MP_TYPE(x,y) == CST_TIP_8) {
+      MP_INFO(x,y).int_4++;
+      if (MP_INFO(x,y).int_4 >= TIP_DEGRADE_TIME) {
+	  do_bulldoze_area(CST_GREEN,x,y);
+      }
+      return;
+  }
+
   /* just grab as much as we can from transport */
   if (x > 0 && (MP_INFO(x - 1,y).flags & FLAG_IS_TRANSPORT) != 0)
     {
@@ -3520,6 +3657,13 @@ do_tip (int x, int y)
       MP_INFO(x,y - 1).int_7 -= i * 10;
       sust_dig_ore_coal_tip_flag = 0;
     }
+
+#if defined (commentout)
+  /* Increment the "ore" reserve; this prevents a new tip from being
+     built on top of a degraded one. */
+  MP_INFO(x,y).ore_reserve++;
+#endif
+
   /* now choose an icon. */
   if ((total_time % NUMOF_DAYS_IN_MONTH) == 0)
     {
@@ -3555,6 +3699,7 @@ do_tip (int x, int y)
 	case (8):
 	  MP_TYPE(x,y) = CST_TIP_8;
 	  MP_INFO(x,y).int_2 = 0;
+	  MP_INFO(x,y).int_4 = 0;
 	  break;
 
 	}
@@ -3702,11 +3847,12 @@ is_real_river (int x, int y)
   return (-1);
 }
 
+/* Feature: coal survey should vary in price and accuracy with technology */
 void 
-engine_do_coal_survey (void)
+do_coal_survey (void)
 {
     if (coal_survey_done == 0) {
-	total_money -= 1000000;
+	adjust_money(-1000000);
 	coal_survey_done = 1;
     }
 }

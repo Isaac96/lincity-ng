@@ -10,11 +10,8 @@
 #include <math.h>
 #include "lcstring.h"
 #include "lcintl.h"
-
-/* this is for OS/2 - RVI */
-#ifdef __EMX__
-#include <float.h>
-#endif
+#include "fileutil.h"
+#include "lclib.h"
 
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
@@ -29,7 +26,14 @@
 #include "mouse.h"
 #include "screen.h"
 
+#ifndef M_PI
+#define M_PI            3.14159265358979323846
+#endif
+
 #define USE_IMAGES 1
+
+#define DEBUG_X11_MOUSE
+#undef DEBUG_X11_MOUSE
 
 void
 set_pointer_confinement (void)
@@ -42,6 +46,42 @@ set_pointer_confinement (void)
     } else {
 	XUngrabPointer (display.dpy, CurrentTime);
     }
+}
+
+static int pointer_confined;
+
+int 
+confine_pointer (int x, int y, int w, int h) 
+{
+
+    if (display.pointer_confined)
+	return 0;
+
+    display.confinewin = 
+	XCreateSimpleWindow(display.dpy, display.win, 
+			    10, 10, w, h,
+			    0, 0, 0);
+
+    XMapWindow(display.dpy, display.confinewin);
+
+    XGrabPointer(display.dpy, display.root, 1,
+		 ButtonPressMask | ButtonReleaseMask | PointerMotionMask,
+		 GrabModeAsync, GrabModeAsync, display.confinewin,
+		 None, CurrentTime);
+
+
+    display.pointer_confined = 1;
+    return 1;
+
+}
+    
+
+void 
+unconfine_pointer (void)
+{
+    XUngrabPointer(display.dpy, CurrentTime);
+    XDestroyWindow(display.dpy, display.confinewin);
+    display.pointer_confined = 0;
 }
 
 void
@@ -97,7 +137,7 @@ setcustompalette (void)
 void
 open_setcustompalette (XColor * inpal)
 {
-  do_setcustompalette (inpal);
+    do_setcustompalette (inpal);
 }
 
 void
@@ -220,50 +260,54 @@ parse_xargs (int argc, char **argv, char **geometry)
     extern char *optarg;
 
 #ifdef ALLOW_PIX_DOUBLING
-    printf ("Options include Pix doubling\n");
-    while ((option = getopt (argc, argv, "vbndg:wR:G:B:")) != EOF)
+    char* option_string = "vbrndg:wR:G:B:D";
 #else
-	while ((option = getopt (argc, argv, "vbng:wR:G:B:")) != EOF)
+    char* option_string = "vbrng:wR:G:B:D";
 #endif
+    while ((option = getopt (argc, argv, option_string)) != EOF) {
+	switch (option)
 	{
-	    switch (option)
-	    {
-	    case 'v':
-		verbose = TRUE;
-		break;
-	    case 'g':
-		*geometry = optarg;
-		break;
+	case 'v':
+	    verbose = TRUE;
+	    break;
+	case 'g':
+	    *geometry = optarg;
+	    break;
 #ifdef ALLOW_PIX_DOUBLING
-	    case 'd':
-		pix_double = 1;
-		/* Fall through.  We are not allowed a border with pix doubling */
+	case 'd':
+	    pix_double = 1;
+	    /* Fall through.  We are not allowed a border with pix doubling */
 #endif
-	    case 'b':
-		borderx = 0;
-		bordery = 0;
-		break;
-	    case 'n':
-		no_init_help = TRUE;
-		break;
-	    case 'w':
-		gamma_correct_red = GAMMA_CORRECT_RED;
-		gamma_correct_green = GAMMA_CORRECT_GREEN;
-		gamma_correct_blue = GAMMA_CORRECT_BLUE;
-		break;
-	    case 'R':
-		sscanf (optarg, "%f", &gamma_correct_red);
-		break;
-	    case 'G':
-		sscanf (optarg, "%f", &gamma_correct_green);
-		break;
-	    case 'B':
-		sscanf (optarg, "%f", &gamma_correct_blue);
-		break;
-
-
-	    }
+	case 'b':
+	    borderx = 0;
+	    bordery = 0;
+	    break;
+	case 'r':
+	    borderx = BORDERX;
+	    bordery = BORDERY;
+	    break;
+	case 'n':
+	    no_init_help = TRUE;
+	    break;
+	case 'w':
+	    gamma_correct_red = GAMMA_CORRECT_RED;
+	    gamma_correct_green = GAMMA_CORRECT_GREEN;
+	    gamma_correct_blue = GAMMA_CORRECT_BLUE;
+	    break;
+	case 'R':
+	    sscanf (optarg, "%f", &gamma_correct_red);
+	    break;
+	case 'G':
+	    sscanf (optarg, "%f", &gamma_correct_green);
+	    break;
+	case 'B':
+	    sscanf (optarg, "%f", &gamma_correct_blue);
+	    break;
+	case 'D':
+	    command_line_debug = 1;
+	    break;
 	}
+    }
     if (verbose)
 	printf (_("Version %s\n"), VERSION);
     if (!(display.dpy = XOpenDisplay (display.dname)))
@@ -300,11 +344,11 @@ Create_Window (char *geometry)
     depth = DefaultDepth (display.dpy, display.screen);
     xswa.event_mask = 0;
     xswa.background_pixel = display.bg;
-    xswa.backing_store = WhenMapped;
-    printf ("DefaultVisual id=%d bp-rgb=%d map-entries=%d\n"
-	    ,(int) (*DefaultVisual (display.dpy, display.screen)).visualid
-	    ,(*DefaultVisual (display.dpy, display.screen)).bits_per_rgb
-	    ,(*DefaultVisual (display.dpy, display.screen)).map_entries);
+    xswa.backing_store = Always;
+    debug_printf ("DefaultVisual id=%d bp-rgb=%d map-entries=%d\n",
+		  (int) (*DefaultVisual (display.dpy, display.screen)).visualid,
+		  (*DefaultVisual (display.dpy, display.screen)).bits_per_rgb,
+		  (*DefaultVisual (display.dpy, display.screen)).map_entries);
     vid = DefaultVisual (display.dpy, display.screen);
     display.cmap
 	    = XDefaultColormap (display.dpy, display.screen);
@@ -361,19 +405,25 @@ Create_Window (char *geometry)
     wmhints.flags = InputHint;
     wmhints.input = True;
     XSetWMHints (display.dpy, display.win, &wmhints);
-    XMapWindow (display.dpy, display.win);
+
+    /* GCS - 2003/08/15 - Cygwin doesn't generate the MapEvent unless
+       the mask enabled before XMapWindow is called.  Therefore, 
+       XSelectInput needs to be called before XMapWindow */
     XSelectInput (display.dpy, display.win,
 		  KeyPressMask | ButtonPressMask | ButtonReleaseMask
 		  | ExposureMask | StructureNotifyMask);
+
+    XMapWindow (display.dpy, display.win);
+    
     for (q = 0; q < 256; q++)
     {
 	display.pixcolour_gc[q] = XCreateGC (display.dpy
 					     ,display.win, 0, NULL);
 	XSetForeground (display.dpy, display.pixcolour_gc[q], q);
-	XSetBackground (display.dpy, display.pixcolour_gc[q]
-			,display.bg);
-	XSetGraphicsExposures (display.dpy, display.pixcolour_gc[q]
-			       ,False);
+	XSetBackground (display.dpy, display.pixcolour_gc[q],
+			display.bg);
+	XSetGraphicsExposures (display.dpy, display.pixcolour_gc[q],
+			       False);
     }
 }
 
@@ -402,7 +452,7 @@ void
 HandleError (char *description, int degree)
 {
   fprintf (stderr,
-	   "An error has occurred.  The description is below...\n");
+	   _("An error has occurred.  The description is below...\n"));
   fprintf (stderr, "%s\n", description);
 
   if (degree == FATAL) {
@@ -554,12 +604,12 @@ Fgl_fillbox (int x1, int y1, int w, int h, int col)
 
 #ifdef ALLOW_PIX_DOUBLING
     if (pix_double)
-	XFillRectangle (display.dpy, display.win
-			,display.pixcolour_gc[col], x1 * 2, y1 * 2, w * 2, h * 2);
+	XFillRectangle (display.dpy, display.win,
+			display.pixcolour_gc[col], x1 * 2, y1 * 2, w * 2, h * 2);
     else
 #endif
-	XFillRectangle (display.dpy, display.win
-			,display.pixcolour_gc[col], x1 + borderx, y1 + bordery, w, h);
+	XFillRectangle (display.dpy, display.win,
+			display.pixcolour_gc[col], x1 + borderx, y1 + bordery, w, h);
 }
 
 #ifdef USE_IMAGES
@@ -611,7 +661,7 @@ Fgl_putbox_low (Drawable dst, int x0, int y0, int x1, int y1,
 		       0,		/* data */
 		       pmult * w, pmult * h,	/* width and height */
 		       32, 0);	/* bitmap_pad and bytes_per_line */
-
+    /* XXX: assert is not the right way to check for errors - wck */
     assert (im != 0);
     im->data = (char *) malloc (im->bytes_per_line * pmult * h);
     assert (im->data != 0);
@@ -691,12 +741,11 @@ Fgl_getbox (int x1, int y1, int w, int h, void *buf)
 void
 HandleEvent (XEvent * event)
 {
-
     XEvent loop_ev; /* for clearing the queue of events */
 
     switch (event->type)
     {
-    case (KeyPress):
+    case KeyPress:
 	{
 	    XKeyEvent *key_event = (XKeyEvent *) event;
 	    char buf[128];
@@ -718,6 +767,13 @@ HandleEvent (XEvent * event)
 	    case XK_Right:
 		x_key_value = 4;
 		break;
+#if defined (commentout)
+		/* GCS:  What the hell is this??? */
+	    case 'C':
+		if (!confine_pointer(-10,-10,200,200))
+		    unconfine_pointer();
+		break;
+#endif
 	    case XK_BackSpace:
 	    case XK_Delete:
 		x_key_value = 127;
@@ -726,26 +782,23 @@ HandleEvent (XEvent * event)
 	}
 	break;
 
-    case (MotionNotify): /* added by WCK */
+    case MotionNotify: 
 	{
 	    XMotionEvent *ev = (XMotionEvent *) event;
 
 	    while (XCheckMaskEvent(display.dpy,PointerMotionMask,&loop_ev)) {
 		ev = (XMotionEvent *) &loop_ev;
 	    }
-
-	    /* XXX: how will grabbing events out of the queue affect the world? */
 #ifdef DEBUG_X11_MOUSE
 	    printf("pointer motion event\n");
 #endif
-
 	    if (ev->state & Button2Mask)
 		drag_screen();
 
 	}
 	break;
 
-    case (ButtonPress):
+    case ButtonPress:
 	{
 	    XButtonEvent *ev = (XButtonEvent *) event;
 	    if ((ev->state & ShiftMask) != 0)
@@ -768,13 +821,29 @@ HandleEvent (XEvent * event)
 	    case Button3:
 		mouse_button = LC_MOUSE_RIGHTBUTTON | LC_MOUSE_PRESS;
 		break;
+
+	    /* Wheel mouse support 
+	       Move further for Shift (in main.c: process_keystrokes() ),
+	       left to right instead of up and down for Control */
+
+	    case Button4:  /* Up (3); Left (1) if Control */
+		x_key_shifted = ShiftMask & ev->state;
+		x_key_value = (ControlMask & ev->state) ? 1 : 3; 
+		break; 
+	    case Button5: /* Down (4); Right (2) if control */
+		x_key_shifted = ShiftMask & ev->state;
+		x_key_value = (ControlMask & ev->state) ? 4 : 2;
+		break;
+
+	    /* XFree86-3 only supports 5 buttons, no Button6 or higher */
+
 	    }
 	    cs_mouse_handler (mouse_button, 0, 0);
 	    mouse_button = 0;
 	}
 	break;
 
-    case (ButtonRelease):
+    case ButtonRelease:
 	{
 	    XButtonEvent *ev = (XButtonEvent *) event;
 	    mouse_button = ev->button; 
@@ -797,41 +866,35 @@ HandleEvent (XEvent * event)
 	}
 	break;
 
-    case (Expose):
+    case Expose:
 	{
 	    XExposeEvent *ev = (XExposeEvent *) event;
+	    int gx1,gy1,gx2,gy2;
+	    gx1 = ev->x;
+	    gy1 = ev->y;
+	    gx2 = ev->x + ev->width;
+	    gy2 = ev->y + ev->height;
 
-	    while (XCheckMaskEvent(display.dpy,ExposureMask,&loop_ev)) 
-	    {
-	      ev = (XExposeEvent *) &loop_ev;
+	    /* Coalesce waiting exposes into single redraw */
+	    while (XCheckMaskEvent(display.dpy,ExposureMask,&loop_ev)) {
+	        ev = (XExposeEvent *) &loop_ev;
+		gx1 = min_int (gx1,ev->x);
+		gy1 = min_int (gy1,ev->y);
+		gx2 = max_int (gx2,ev->x + ev->width);
+		gy2 = max_int (gy2,ev->y + ev->height);
 	    }
 	    if (suppress_next_expose) {
 		suppress_next_expose = 0;
 		break;
 	    }
-	    refresh_screen (ev->x, ev->y, ev->x + ev->width, ev->y + ev->height);
+	    refresh_screen (gx1,gy1,gx2,gy2);
 	}
 	break;
+
     case ConfigureNotify:
 	{
 	    XConfigureEvent *ev = (XConfigureEvent *) event;
 
-#if defined (commentout)
-            /* Not sure yet, but need ResizeRedirectMask or 
-	       VisibilityChangeMask */
-	    while (XCheckMaskEvent(display.dpy,StructureNotifyMask, &loop_ev)) 
-	    {
-	        if (loop_ev.type != ConfigureNotify) 
-		{
-                    /* We don't seem to do anything with the others anyway,
-		       but I want to know for now */
-                    fprintf(stderr,"StructureNotifyMask != ConfigureNotify, "
-			    "loop_ev.type = %d\n", loop_ev.type);
-		    return;
-		}
-		ev = (XConfigureEvent *) &loop_ev;
-	    }
-#endif
 	    while (XCheckTypedEvent(display.dpy, ConfigureNotify, &loop_ev)) {
 		ev = (XConfigureEvent *) &loop_ev;
 	    }
@@ -839,8 +902,10 @@ HandleEvent (XEvent * event)
 	}
 	break;
     }
-    /*fprintf(stderr,"Handler fell through, event->type = %d\n",event->type);*/
+    //fprintf(stderr,"Handler fell through, event->type = %d\n",event->type);
 }
+
+#undef DEBUG_X11_MOUSE
 
 void
 refresh_screen (int x1, int y1, int x2, int y2)		/* bounds of refresh area */
@@ -965,15 +1030,35 @@ lc_get_keystroke (void)
 
 
 /* init_full_mouse is called just before the main client loop. */
-   
+
+/* XXX: This needs a much better name */
+/* GCS: Yes it does, b/c it means something different for svgalib */
 void 
-init_full_mouse (void) /* added by WCK */
+init_x_mouse (void) 
 {
   XSelectInput (display.dpy, display.win,
 		KeyPressMask | ButtonPressMask | ButtonReleaseMask
-		| ExposureMask | StructureNotifyMask | Button2MotionMask);
-  /* This should be done better, only specifying Button2MotionMask when
-     button 2 is pressed. */
+		| ExposureMask | StructureNotifyMask | ButtonMotionMask);
+}
+
+void
+draw_border (void)
+{
+    int col = TEXT_BG_COLOUR & 0xff;
+    int pd = pix_double + 1;
+    if (borderx > 0) {
+	XFillRectangle (display.dpy, display.win, display.pixcolour_gc[col],
+			0, bordery, borderx, display.winH - 2*bordery);
+	XFillRectangle (display.dpy, display.win, display.pixcolour_gc[col],
+			display.winW - borderx, bordery,
+			borderx, display.winH - 2*bordery);
+    }
+    if (bordery > 0) {
+	XFillRectangle (display.dpy, display.win, display.pixcolour_gc[col],
+			0, 0, display.winW, bordery);
+	XFillRectangle (display.dpy, display.win, display.pixcolour_gc[col],
+			0, display.winH - bordery, display.winW, bordery);
+    }
 }
 
 #ifdef USE_PIXMAPS

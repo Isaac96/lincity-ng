@@ -2,17 +2,22 @@
 
 AUTOMAKE_OPTIONS = foreign
 
-DEFS = @DEFS@ -DLIBDIR=\"${pkgdatadir}\"
+### DEFS = @DEFS@ -DLIBDIR=\"${pkgdatadir}\"
+DEFS = @DEFS@
 X_DEFS = -DLC_X11=1
 SVGA_DEFS = -DSVGALIB=1
 
-SUBDIRS = intl po
+SUBDIRS = m4 intl po
+
+## (deleted)
+##	acconfig.h   \
+##	config.h \
+
 noinst_HEADERS = \
-	acconfig.h   animate.h	  cliglobs.h   \
-	climsg.h     clinet.h	 clistubs.h \
-	common.h     config.h	  confw32.h    \
+	cliglobs.h   \
+	common.h     confw32.h    \
 	engglobs.h   engine.h	 fileutil.h \
-	generic.h    geometry.h   \
+	generic.h    geometry.h  dialbox.h \
 	lcconfig.h   \
 	lchelp.h       \
 	lcintl.h     lcstring.h	lclib.h\
@@ -20,29 +25,36 @@ noinst_HEADERS = \
 	lcx11.h      lcsvga.h \
 	ldsvgui.h    ldsvguts.h   \
 	lin-city.h   lintypes.h	 market.h \
+	module_buttons.h \
 	mouse.h      mps.h	  pbar.h    \
 	picedit.h    pixmap.h     power.h \
-	protocol.h   resource.h	 screen.h \
-	sernet.h     shrglobs.h   shrnet.h     \
+	readpng.h \
+	resource.h	 screen.h \
+	shrglobs.h   stats.h \
 	simulate.h   timer.h	 transport.h \
 	typeinit.h   xpicedit.h
 
-# -- This can't contain subdirectories --
+# Directories that need to have CVS and ca subdirectories removed
 LC_DISTDIRS = \
 	help icons messages \
 	old.Makefiles opening tools
+
+##EXTRA_DIST = config.rpath  $(LC_DISTDIRS) \
 
 EXTRA_DIST = $(LC_DISTDIRS) \
 	colour.pal \
 	lcwin32.c winmain.c \
 	lincity.ico  small.ico lincity.rc \
-	FAQ CHANGES COPYRIGHT Acknowledgements \
+	CHANGES COPYRIGHT Acknowledgements \
 	config.sh \
 	README.profiling \
 	lincity.6
 
 man_MANS = lincity.6
-pkgdata_DATA = help/* icons/* messages/* messages/ca/* opening/* colour.pal
+## pkgdata_DATA = help/* icons/* messages/* messages/ca/* opening/* colour.pal
+## pkgdata_DATA = help/* icons/* messages/* opening/* colour.pal
+## nobase_pkgdata_DATA = help/* icons/* messages/ca/* messages/* opening/* colour.pal
+nobase_pkgdata_DATA = help/* icons/* messages/* opening/* colour.pal
 
 
 ############################################################################
@@ -55,15 +67,22 @@ pkgdata_DATA = help/* icons/* messages/* messages/ca/* opening/* colour.pal
 ##     compiled picedit/xpicedit, and install these.
 ## 3)  I need to set the suid bit on lincity/picedit.
 ############################################################################
+###########   GCS Jan 19, 2003
+############################################################################
+##   1)  No longer need to make the directories.  Automake now supports the
+##       "nobase" option.
+##	    $(mkinstalldirs) $(DESTDIR)$(pkgdatadir)
+##	    $(mkinstalldirs) $(DESTDIR)$(pkgdatadir)/help
+##	    $(mkinstalldirs) $(DESTDIR)$(pkgdatadir)/icons
+##	    $(mkinstalldirs) $(DESTDIR)$(pkgdatadir)/messages
+##	    $(mkinstalldirs) $(DESTDIR)$(pkgdatadir)/opening
+##   2)  Removed the following line from install-exec-local:
+##	    $(mkinstalldirs) $(DESTDIR)$(pkgdatadir)/messages/ca
+############################################################################
+
 install-exec-local:
-	$(mkinstalldirs) $(DESTDIR)$(pkgdatadir)
-	$(mkinstalldirs) $(DESTDIR)$(pkgdatadir)/help
-	$(mkinstalldirs) $(DESTDIR)$(pkgdatadir)/icons
-	#$(mkinstalldirs) $(DESTDIR)$(pkgdatadir)/messages
-	$(mkinstalldirs) $(DESTDIR)$(pkgdatadir)/messages/ca
-	$(mkinstalldirs) $(DESTDIR)$(pkgdatadir)/opening
 	@list='$(EXTRA_PROGRAMS)'; for p in $$list; do \
-	  if test -f $$p && test ! -f $(DESTDIR)$(bindir)/`echo $$p|sed 's/$(EXEEXT)$$//'|sed '$(transform)'|sed 's/$$/$(EXEEXT)/'`; then \
+	  if test -f $$p; then \
 	    echo "  $(INSTALL_PROGRAM) $(INSTALL_STRIP_FLAG) $$p $(DESTDIR)$(bindir)/`echo $$p|sed 's/$(EXEEXT)$$//'|sed '$(transform)'|sed 's/$$/$(EXEEXT)/'`"; \
 	     $(INSTALL_PROGRAM) $(INSTALL_STRIP_FLAG) $$p $(DESTDIR)$(bindir)/`echo $$p|sed 's/$(EXEEXT)$$//'|sed '$(transform)'|sed 's/$$/$(EXEEXT)/'`; \
 	  else :; fi; \
@@ -86,18 +105,34 @@ uninstall-local:
 ## --
 ## This is needed to keep the CVS directories from being installed in 
 ## my subdirectories.
+## --
+## GCS Jan 19, 2003  Added a check for deleting the "ca" subdirectory
+##                   Added lowercase "cvs" directory (when copied from dos)
+##  (removed this!)
+##          cp -r $$p $(distdir)/$$p; \
+##  (modified this)
+# 	  if test -d $(distdir)/$$p/CVS ; then \
+# 	    echo "rm -rf $(distdir)/$$p/CVS" ; \
+# 	    rm -rf $(distdir)/$$p/CVS ; \
+# 	    echo "rm -rf $(distdir)/$$p/*/CVS" ; \
+# 	    rm -rf $(distdir)/$$p/*/CVS ; \
+# 	    echo "rm -rf $(distdir)/$$p/*/*/CVS" ; \
+# 	    rm -rf $(distdir)/$$p/*/*/CVS ; \
+# 	    echo "rm -rf $(distdir)/$$p/cvs" ; \
+# 	    rm -rf $(distdir)/$$p/cvs ; \
+# 	    echo "rm -rf $(distdir)/$$p/*/cvs" ; \
+# 	    rm -rf $(distdir)/$$p/*/cvs ; \
+# 	    echo "rm -rf $(distdir)/$$p/*/*/cvs" ; \
+# 	    rm -rf $(distdir)/$$p/*/*/cvs ; \
+# 	  else :; fi; \
+##
+##	  echo "Erasing CVS directories..." \
 ############################################################################
 dist-hook:
 	@list='$(LC_DISTDIRS)'; for p in $$list; do \
-          cp -r $$p $(distdir)/$$p; \
-	  if test -d $(distdir)/$$p/CVS ; then \
-	    echo "rm -rf $(distdir)/$$p/CVS" ; \
-	    rm -rf $(distdir)/$$p/CVS ; \
-	    echo "rm -rf $(distdir)/$$p/*/CVS" ; \
-	    rm -rf $(distdir)/$$p/*/CVS ; \
-	    echo "rm -rf $(distdir)/$$p/*/*/CVS" ; \
-	    rm -rf $(distdir)/$$p/*/*/CVS ; \
-	  else :; fi; \
+	  rm -rf `find $(distdir)/$$p -name CVS -print` ; \
+	  rm -rf `find $(distdir)/$$p -name cvs -print` ; \
+	  rm -rf `find $(distdir)/$$p -name ca -print` ; \
 	done
 
 
@@ -106,7 +141,7 @@ dist-hook:
 ############################################################################
 
 ## These executables might not be built
-EXTRA_PROGRAMS = xlincity lincity lcserver xpicedit picedit
+EXTRA_PROGRAMS = xlincity lincity xpicedit picedit
 
 X_PROGS: xlincity$(EXEEXT)
 SVGA_PROGS: lincity$(EXEEXT)
@@ -119,45 +154,55 @@ bin_PROGRAMS = @PROGS@
 XLC_OBJ = \
 	x_ldsvgui.o x_splash.o x_lchelp.o x_main.o x_mouse.o \
 	x_cliglobs.o x_mps.o x_screen.o x_lcx11.o x_pixmap.o x_geometry.o \
-	x_pbar.o
+	x_pbar.o x_dialbox.o x_module_buttons.o
 
 LC_OBJ = \
 	vga_ldsvgui.o vga_splash.o vga_lchelp.o vga_main.o vga_mouse.o \
 	vga_cliglobs.o vga_mps.o vga_lcsvga.o vga_screen.o vga_geometry.o \
-	vga_pbar.o
+	vga_pbar.o vga_dialbox.o vga_module_buttons.o
+
+
+## Note:  If the executable requires a prefix (x_ or vga_), then 
+##        it should be listed below under EXTRA_*_SOURCES.  Otherwise,
+##        it is a "regular" source file.
 
 
 ## ----- xlincity -----
 xlincity_SOURCES = \
-	clinet.c climsg.c \
-	animate.c clistubs.c shrnet.c \
-	lclib.c power.c 
+	lclib.c power.c \
+	ldsvguts.c engine.c transport.c market.c \
+	simulate.c shrtypes.c lintypes.c \
+	readpng.c \
+	timer.c fileutil.c shrglobs.c stats.c
 EXTRA_xlincity_SOURCES = \
 	ldsvgui.c splash.c lchelp.c main.c mouse.c mps.c screen.c \
-	lcx11.c pixmap.c cliglobs.c geometry.c pbar.c
+	pixmap.c cliglobs.c geometry.c pbar.c module_buttons.c \
+	dialbox.c \
+	lcx11.c 
 xlincity_DEPENDENCIES = \
-	${XLC_OBJ} \
-	libutils.a \
-	libengine.a
+	${XLC_OBJ}
 xlincity_LDADD = \
 	${XLC_OBJ} \
-	-L. -lengine -lutils @X_LIBS@ -lXext -lX11 -lm
+	@X_LIBS@ -lXext -lX11 -lpng -lz -lm
+
 
 ## ----- lincity -----
 lincity_SOURCES = \
-	clinet.c climsg.c \
-	animate.c clistubs.c shrnet.c \
-	lclib.c power.c
+	lclib.c power.c \
+	ldsvguts.c engine.c transport.c market.c \
+	simulate.c shrtypes.c lintypes.c \
+	readpng.c \
+	timer.c fileutil.c shrglobs.c stats.c
 EXTRA_lincity_SOURCES = \
 	ldsvgui.c splash.c lchelp.c main.c mouse.c mps.c screen.c \
-	lcsvga.c cliglobs.c geometry.c pbar.c
+	pixmap.c cliglobs.c geometry.c pbar.c module_buttons.c \
+	dialbox.c \
+	lcsvga.c
 lincity_DEPENDENCIES = \
-	${LC_OBJ} \
-	libutils.a \
-	libengine.a
+	${LC_OBJ}
 lincity_LDADD = \
 	${LC_OBJ} \
-	-L. -lengine -lutils -lvgagl -lvga -lm
+	-lvgagl -lvga -lpng -lz -lm
 
 ## ----- xpicedit -----
 xpicedit_SOURCES = 
@@ -168,23 +213,6 @@ xpicedit_LDADD = x_picedit.o -lXext -lX11 -lm
 picedit_SOURCES = 
 EXTRA_picedit_SOURCES = picedit.c
 picedit_LDADD = vga_picedit.o -lvgagl -lvga -lm
-
-## ----- lcserver -----
-lcserver_SOURCES = sermain.c sernet.c shrnet.c serstubs.c sermsg.c
-lcserver_DEPENDENCIES = \
-	libutils.a \
-	libengine.a
-lcserver_LDADD = \
-	-L. -lengine -lutils -lm
-
-## ----- libraries -----
-noinst_LIBRARIES = libengine.a libutils.a
-libengine_a_SOURCES = \
-	ldsvguts.c engine.c transport.c market.c \
-	simulate.c shrtypes.c lintypes.c
-libutils_a_SOURCES = \
-	timer.c fileutil.c shrglobs.c
-
 
 ## ----------------- VGA RULES ------------------
 vga_cliglobs.o: cliglobs.c cliglobs.h
@@ -199,7 +227,7 @@ vga_ldsvgui.o: ldsvgui.c
 vga_geometry.o: geometry.c geometry.h
 	$(COMPILE) $(SVGA_DEFS) -o vga_geometry.o -c geometry.c
 
-vga_lchelp.o: lchelp.c lchelp.h lin-city.h lctypes.h
+vga_lchelp.o: lchelp.c lchelp.h lin-city.h lctypes.h module_buttons.h
 	$(COMPILE) $(SVGA_DEFS) -o vga_lchelp.o -c lchelp.c
 
 vga_lcsvga.o: lcsvga.c lcsvga.h lin-city.h lctypes.h
@@ -208,17 +236,24 @@ vga_lcsvga.o: lcsvga.c lcsvga.h lin-city.h lctypes.h
 vga_main.o: main.c lin-city.h lctypes.h
 	$(COMPILE) $(SVGA_DEFS) -o vga_main.o -c main.c
 
-vga_mouse.o: mouse.c mouse.h lin-city.h lctypes.h
+vga_mouse.o: mouse.c mouse.h lin-city.h lctypes.h module_buttons.h
 	$(COMPILE) $(SVGA_DEFS) -o vga_mouse.o -c mouse.c
 
 vga_mps.o: mps.c mps.h lin-city.h lctypes.h
 	$(COMPILE) $(SVGA_DEFS) -o vga_mps.o -c mps.c
 
 vga_pbar.o: pbar.c pbar.h lin-city.h shrglobs.h lchelp.h cliglobs.h
-	$(COMPILE) $(SVGA_DEFS) -o x_pbar.o -c pbar.c
+	$(COMPILE) $(SVGA_DEFS) -o vga_pbar.o -c pbar.c
 
-vga_screen.o: screen.c screen.h lin-city.h lctypes.h
+vga_screen.o: screen.c screen.h lin-city.h lctypes.h module_buttons.h
 	$(COMPILE) $(SVGA_DEFS) -o vga_screen.o -c screen.c
+
+vga_dialbox.o: dialbox.c dialbox.h geometry.h
+	$(COMPILE) $(SVGA_DEFS) -o vga_dialbox.o -c dialbox.c
+
+vga_module_buttons.o: module_buttons.c module_buttons.h lin-city.h lctypes.h \
+	mouse.h
+	$(COMPILE) $(SVGA_DEFS) -o vga_module_buttons.o -c module_buttons.c
 
 
 ## ----------------- X RULES ------------------
@@ -234,7 +269,7 @@ x_ldsvgui.o: ldsvgui.c
 x_geometry.o: geometry.c geometry.h
 	$(COMPILE) $(X_DEFS) -o x_geometry.o -c geometry.c
 
-x_lchelp.o: lchelp.c lchelp.h lin-city.h lctypes.h
+x_lchelp.o: lchelp.c lchelp.h lin-city.h lctypes.h module_buttons.h
 	$(COMPILE) $(X_DEFS) -o x_lchelp.o -c lchelp.c
 
 x_lcx11.o: lcx11.c lcx11.h lin-city.h lctypes.h
@@ -246,7 +281,7 @@ x_pixmap.o: pixmap.c lcx11.h lin-city.h lctypes.h
 x_main.o: main.c lin-city.h lctypes.h lcx11.h
 	$(COMPILE) $(X_DEFS) -o x_main.o -c main.c
 
-x_mouse.o: mouse.c mouse.h lin-city.h lctypes.h
+x_mouse.o: mouse.c mouse.h lin-city.h lctypes.h module_buttons.h
 	$(COMPILE) $(X_DEFS) -o x_mouse.o -c mouse.c
 
 x_mps.o: mps.c mps.h lin-city.h lctypes.h
@@ -255,8 +290,15 @@ x_mps.o: mps.c mps.h lin-city.h lctypes.h
 x_pbar.o: pbar.c pbar.h lin-city.h shrglobs.h lchelp.h cliglobs.h
 	$(COMPILE) $(X_DEFS) -o x_pbar.o -c pbar.c
 
-x_screen.o: screen.c screen.h lin-city.h lctypes.h lcx11.h
+x_screen.o: screen.c screen.h lin-city.h lctypes.h lcx11.h module_buttons.h
 	$(COMPILE) $(X_DEFS) -o x_screen.o -c screen.c
+
+x_dialbox.o: dialbox.c dialbox.h lcx11.h geometry.h
+	$(COMPILE) $(X_DEFS) -o x_dialbox.o -c dialbox.c
+
+x_module_buttons.o: module_buttons.c module_buttons.h lin-city.h lctypes.h \
+	mouse.h
+	$(COMPILE) $(X_DEFS) -o x_module_buttons.o -c module_buttons.c
 
 
 ## ----------------- PICEDIT RULES ------------------
@@ -266,3 +308,5 @@ x_picedit.o: picedit.c
 vga_picedit.o: picedit.c
 	$(COMPILE) $(X_DEFS) -o vga_picedit.o -c picedit.c
 
+
+ACLOCAL_AMFLAGS = -I m4
