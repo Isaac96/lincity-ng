@@ -54,7 +54,7 @@ num_to_ansi(char * s, size_t size, long num)
   int triplets = 0;
   float numf = (float)num;  
 
-  while (numf > 1000) {
+  while (numf > 1000 || numf < -1000) {
     numf /= 1000;
     triplets++;
   }
@@ -70,20 +70,26 @@ num_to_ansi(char * s, size_t size, long num)
     default: triplets = '?'; break;
     }
       
-  if (size == 4)  /* to make up for format_pos_number4.  Eeewwwwwww. */ 
-    if (numf < 10) 
-      snprintf(s, size + 1, "%1.1f%c", numf, triplets);
-    else 
-      snprintf(s,size + 1, "%3.0f%c", numf, triplets);
-  else
-    snprintf(s, size, "%3.1f%c", numf, triplets);
+  if (size == 4) { /* to make up for format_pos_number4.  Eeewwwwwww. */ 
+      if (numf < 10) { 
+	  snprintf(s, size + 1, "%1.1f%c", numf, triplets);
+      } else {
+	  snprintf(s,size + 1, "%3.0f%c", numf, triplets);
+      }
+  } else {
+      if (triplets == ' ') {
+	  snprintf(s, size, "%3.1f", numf);
+      } else {
+	  snprintf(s, size, "%3.1f%c", numf, triplets);
+      }
+  }
 }
 
 void 
 num_to_ansi_unit(char * s, size_t size, long num, char unit) 
 {
   int triplets = 0;
-  float numf = (float)num;  
+  float numf = (float)num;
 
   while (numf > 1000) {
     numf /= 1000;
@@ -103,14 +109,71 @@ num_to_ansi_unit(char * s, size_t size, long num, char unit)
       
   if (size == 4)  /* to make up for format_pos_number4 */
     if (numf < 10) 
-      snprintf(s, size, "%1.1f%c%c", numf, triplets, unit);
+      snprintf(s, size, "%4.1f%c%c", numf, triplets, unit);
     else 
-      snprintf(s,size, "%3.0f%c%c", numf, triplets, unit);
+      snprintf(s,size, "%4.0f%c%c", numf, triplets, unit);
   else
-    snprintf(s, size, "%3.1f%c%c", numf, triplets, unit);
+    snprintf(s, size, "%5.1f%c%c", numf, triplets, unit);
 }
 
+/* commify: take a number and convert it to a string grouped into triplets
+   with commas; returns number of characters written, excluding trailing zero
+*/
+int 
+commify (char *str, size_t size, int argnum)
+{
+    size_t count = 0;
+    int i = 0;
+    int triad = 1;
+    int num = argnum;
+    int kludge = 1;
 
+    if (num < 0) 
+	count += snprintf(str, size, "-");
+
+    num = abs(argnum);
+    
+    for (; num >= 1000; num /= 1000, triad++, kludge *= 1000);
+
+    num = abs(argnum);
+
+    for (; triad > 0; i++, triad--) {
+
+	if (i == 0) 
+	    if (triad == 1)
+		count += snprintf(str + count, size - count, "%d", num);
+	    else
+		count += snprintf(str + count, size - count, "%d,", 
+				  num ? num / kludge : num);
+	else if (triad == 1)
+	    count += snprintf(str + count, size - count, "%03d", 
+			      num ? num / kludge : num);
+	else
+	    count += snprintf(str + count, size - count, "%03d,",
+			      num ? num / kludge : num);
+
+	if (num) /* don't divide by zero */
+	    num %= kludge;
+
+	kludge /= 1000;
+    }
+
+    return count;
+}
+
+/* GCS - make sure that the string has length at least size-1 */
+void
+pad_with_blanks (char* str, int size)
+{
+  while (*str) {
+    size--;
+    str++;
+  }
+  while (size-- > 1) {
+    *str++ = ' ';
+  }
+  *str = '\0';
+}
 
 void 
 format_pos_number4 (char* str, int num)
@@ -118,26 +181,22 @@ format_pos_number4 (char* str, int num)
   num_to_ansi(str, 4, num);
 }
 
-void
-format_money (char* str)
-{
-    int money_sign = total_money >= 0 ? 1 : -1;
-    int money_absval = money_sign * total_money;
-    int millions = money_absval / 1000000;
-    int ones = money_absval % 1000000;
-
-    if (millions) {
-	sprintf (str, "%5d%c%06d", 
-		 money_sign * millions, MONEY_SEPARATOR, ones);
-    } else {
-	sprintf (str, "     %7d", money_sign * ones);
-    }
-}
-
 void 
 format_power(char * str, size_t size, long power)
 {
   num_to_ansi_unit(str, size, power, 'w');
+}
+
+int
+min_int (int i1, int i2)
+{
+  return i1 < i2 ? i1 : i2;
+}
+
+int
+max_int (int i1, int i2)
+{
+  return i1 > i2 ? i1 : i2;
 }
 
 void * 
