@@ -3,7 +3,7 @@ About automake/autoconf
 -----------------------
 
 You need to use automake 1.4 and autoconf version 2.13, with the gettext
-extensions installed.  
+extensions installed.  I am using gettext 0.10.38.
 
 
 How to make an intermediate version
@@ -35,7 +35,7 @@ Make the UNIX tarball:
   6)     make dist
   7)     Done!
 
-Make the Win package:
+Make the Win package (version 1.11):
 
   5)     Build release version on Win
   6)     Reboot into Linux
@@ -55,3 +55,27 @@ Make the Win package:
   15)    zip -r lincity109.zip lincity109
   16)    Done!
 
+Make the Win package (version 1.12):
+
+  5)     Build release version on Win
+  6)     Build the catalan message file:
+            c:\gsharp\pkg\gettext\gettext.win32.msvcrt\bin\msgfmt ca.po -o ca.gmo
+
+  8)     Make a new copy of the lincity directory
+  9)     cd to the newly created copy of the lincity directory
+  10)    copy Release\Lincity.exe .
+  10.1)  Copy msgfmt.exe over
+	    copy c:\gsharp\pkg\gettext\gettext.win32.msvcrt\bin\msgfmt.exe .
+  10.2)  Copy gnu_gettext.dll over
+	    copy c:\gsharp\pkg\gettext\gettext.win32.msvcrt\deploy\gnu_gettext.dll .
+  10.3)  Copy catalan message file to the right place
+            tools\copy_lc_messages.bat
+
+  11)    run tools\zip_source.bat
+  12)    run tools\unzip_files.bat
+  13)    run tools\delete_cruft.bat
+  13.1)  Look around for other cruft files
+
+  14)    rename the directory (e.g. to lincity112)
+  15)    zip -r lincity112.zip lincity112
+  16)    Done!

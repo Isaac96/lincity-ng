@@ -24,11 +24,13 @@
 /* Type Definitions */
 typedef struct _disp
 {
-    Window win;
     Display *dpy;
     int screen;
-    Window root;
     char *dname;
+
+    Window win;
+    Window confinewin;
+    Window root;
 
     unsigned int winH;
     unsigned int winW;
@@ -38,6 +40,8 @@ typedef struct _disp
     GC pixcolour_gc[256];
     Atom kill_atom, protocol_atom;
     Colormap cmap;
+
+    int pointer_confined;
 }
 disp;
 
@@ -75,7 +79,8 @@ void call_event (void);
 void call_wait_event (void);
 void open_setcustompalette (XColor *);
 void drag_screen(void); /* WCK */
-void init_full_mouse (void);
+void draw_border (void);
+void init_mouse (void);
 
 int lc_get_keystroke (void);
 

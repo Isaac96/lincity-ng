@@ -1,46 +1,66 @@
-
-
 BUGS and MISFEATURES -- CRITICAL FOR FINAL VERSION
 
-  o Clicking on the menu after opening the options page results in 
-    option page no longer working.
+  o Need to compress and expand translation files and add installation hooks
+    so that only desired translations get installed.
+    *  I think we can just delete the translated version for 1.12, so the 
+       above will not be necessary.
+	** Fixed in pre50?
 
-*  o ESC should bring up menu.
+  o I found inconsistent behavior with using the middle mouse button
+    (mmb).  Clicking with mmb on mini-map causes the main win to jump, and
+    then jump back before scrolling.  Clicking mmb on other displays (finance
+    or unemployment graph) advances the display.  Probably only lmb should
+    advance display.  Also, I'm not sure if mmb should initiate main win
+    scrolling if the click was made outside the main win.
 
-*  o ESC should exit help.
-
-*  o Right click on track starts MT without showing track stats.
-
-  o Some missing statistics:
-	sprintf (s, "%2d/%2d", rockets_launched_success, rockets_launched);
-	Fgl_write (STATS_X + (20 + 12) * 8, STATS_Y + 16, s);
-
-*  o Tech level is scaled incorrectly
-	sprintf (s, "%5.1f ", (float) tech_level * 100.0 / MAX_TECH_LEVEL);
-	Fgl_write (STATS_X + (20 + 12) * 8, STATS_Y, s);
-
-  o Help screens need adjusting for new GUI (some help files missing).
-
-  o Help doesn't look so good after screen is resized.
+  o There still seems to be a problem with putting multi-transport off 
+    the bottom of the screen.  For example, resources can wrap-around 
+	from bottom to top.
 
   o Help gets screwed up by game-related keystrokes.
     Consider also pressing "Enter" when mouse is over a button on the 
     opening screen.
 
-  o Remove multiplayer options from default compilation.
+  o Population pbar is wrong when starting new game, since game starts 
+    with different number of people for random villiage and blank screen 
+    this is difficult to fix.
+	*  Fixed by Corey?
 
-  o Dialog boxes are not centered on screen after a resize.
+  o Bits of the square cursor are not refreshed from the main win frame.
+    For example, this happens with pollution overlay turned on.
 
-  o Border not drawn correctly.
+  o Frame of main win is displayed before load game progress bar finishes.
 
-*  o Pos/neg portion of pbars are not refreshed on screen resize.  Therefore,
-    even if something is increasing, you won't see it.
+  o Some missing keystrokes on windows (which ones?)
 
-  o Need to compress and expand translation files and add installation hooks
-    so that only desired translations get installed.
+  o Options screen should have a keystroke (perhaps "o" for options, 
+    "v" for overlay).
+
+  o Tech buttons are not disabled properly when loading a game with 
+    lower tech level from game with higher tech level.
+
+	To reproduce:  load a decent game (or hit 't' a bunch) and then start
+	a new game.  All techs that were available still are, only now your
+	brand new solar station has a tech of 0.0%.
+	Only happens on a new game, not on loading existing game.
+
+  o Money format in finance window is ugly
 
 
 BUGS and MISFEATURES and MISSING FEATURES -- NON-CRITICAL
+
+  o Right click outside of help should exit help.
+
+  o Re-remove c++ style comments.
+
+  o Since cvs doesn't store timestamps, need to manually set timestamps 
+    to build from cvs.  For now, workaround using fix-timestamps.sh.
+
+  o When you bulldoze water or create water, you're warned that it is
+    very expensive.  However, you only get this warning once, so that it's
+    easy to bulldoze multiple times.  However, when you bulldoze shanties you
+    get the message every time.  This is inconvenient.
+	*  Fixed by Corey?
 
   o Main screen should scroll when moving mouse outside of main window 
     during multi-transport.
@@ -52,32 +72,19 @@ BUGS and MISFEATURES and MISSING FEATURES -- NON-CRITICAL
 
   o Miniscreen colors could be improved.
 
-  o Population pbar is wrong when starting new game, since game starts 
-    with different number of people for random villiage and blank screen 
-    this is difficult to fix.
-
   o xpicedit doesn't seem to work on 24 bit color machines.
-
-  o Tech buttons are not disabled properly when loading a game with 
-    lower tech level from game with higher tech level.
-
-    GCS: I have had a few reports, but I cannot reproduce this.
 
   o When a tip burns up, there is no pollution at all, and the tip disappears.
     Tip should stay, should cause pollution(?).
 
-  o Heavy Industry appears to ALWAYS have power, even if it really does not.
-    Game should better distinguish between external/interally generated power.
-
   o Technology indicator sometimes shows both a rise and fall.  This happens
     after loading a game, old indicator remains as a ghost.
+	*  Fixed by Corey?
 
   o There is a display bug, where a small block is left when
     exiting a help page. The only happens when part of the mouse cursor is in
     the main window during the re-draw. It quicky disappears when the main
-    window is scrolled or updated. This is such a minor bug, that I consider it
-    best left in (I don't want to risk breaking something else at this stage),
-    so this will only get fixed if there are other bugs to fix in the future.
+    window is scrolled or updated.
 
     I've seen this display bug also happens when refreshing after 
     modal dialog boxes.
@@ -86,73 +93,28 @@ BUGS and MISFEATURES and MISSING FEATURES -- NON-CRITICAL
 
   o Need to clean up write of gzipped files to use popen().
 
-  o UNIX version should run out of current directory without needing
-    to do a "make install".
-
   o Why don't we use a recognized file format for the splash screen?
 
   o Need to update dependencies in Makefile.am so that "cp" warnings go away.
 
   o Slight streaking in monthgraph.
 
-  o Extra keystroke required when market checkbox is up.
-
   o Like to have info pages and/or printed documentation.
 
+  o Animations for paths/roads/railroads.
 
-CLIENT/SERVER BUGS
+  o Power stations list a "cycle" percentage, which under previous versions 
+    cycled around (presumably one quanta of power is released at the end of 
+    each cycle?).  However, in the CVS code the listed cycle never changes.
+	Display bug:  cycle is equal to capacity.
 
-  o Figure out what to do with load/save/new game.
 
-    GCS: Partly fixed.  Now you can load a game onto the server with the 
-    command line.  Still need server-side autosave, server-side save 
-    and client-side save.  May not need client-side load, but it might 
-    be useful.  This is essentially a GUI problem.
+REQUESTED FEATURES
 
-  o No message from server to client explaining why a place_item 
-    request fails.
+  o Autosaves
 
-  o Various race conditions.  For example, if player A bulldozes 
-    the commune and builds the power plant, and meanwhile player B 
-    bulldozes the commune, then player B might accidentally bulldoze 
-    the power plant.
+  o Multi-buldozing
 
-    Similar race condition in setting buy/sell flags for ports.
+  o Auto-upgrading
 
-  o No report on how many seconds per year.
-
-  o Reported prices (place/bulldoze) shown in lower left are bogus.
-
-  o Client/server interface does not handle modal dialog boxes well.
-    In particular, client "wastes time" trying to catch up with all 
-    the server's queued messages.
-
-  o Client doesn't get launch success/fail messages.
-
-  o Client doesn't get random fires.
-
-  o Ore mine flashes the wrong graphic when placed (client/server).
-    This problem is caused by the fact that the client does not correctly 
-    set the MP_INFO() bits when an item is placed.
-
-  o Some animations incomplete (client/server)
-      - Power lines
-      - Substations
-
-  o No lcserver command line parsing on Win32.  Need a copy of getopt().
-
-  o Client joining game gets all messages for new technologies.
-
-  o The server crashes (or worse) after being fed invalid packets.
-    Similar problem exists when loading invalid save files.
-
-  o Slow servers send out too many map update messages.  It should send 
-    out at most one map update per month.
-
-  o Sometimes client cannot resynch on messages when server message 
-    buffer fills.  This happens on the SGI when you move the client 
-    window with pollution mini-screen turned on.
-
-  o Additional information is needed at game connect, such as whether 
-    or not coal survey has been done.
-
+  o Move code into src subdirectory

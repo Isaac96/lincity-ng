@@ -7,16 +7,14 @@
 
 #ifndef _LCLIB_H
 #define _LCLIB_H
+
 char * current_month(int current_time);
 int current_year (int current_time);
-
 void format_number5 (char* str, int num);
-
 void format_pos_number4 (char* str, int num);
+void format_power(char * str, size_t size, long power);
+void * lcalloc (size_t size);
+int commify(char * str, size_t size, int argnum);
 
-void format_money (char* str);
-
-/* format_power calls snprintf, hence size */
-void format_power (char * str, size_t size, long power, char unit);
 #endif
 

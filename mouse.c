@@ -12,14 +12,15 @@
 #include "lin-city.h"
 #include "mouse.h"
 #include "engglobs.h"
-#include "clistubs.h"
+#include "cliglobs.h"
 #include "engine.h"
 #include "screen.h"
-#include "climsg.h"
 #include "mps.h"
 #include "fileutil.h"
 #include "lchelp.h"
 #include "pbar.h"
+#include "lclib.h"
+#include "module_buttons.h"
 
 #define DEBUG_MT_CODE 1
 
@@ -29,22 +30,29 @@ extern Update_Scoreboard update_scoreboard;
  * Private global variables
  * ---------------------------------------------------------------------- */
 static struct mouse_button_struct buttons[NUM_BUTTONS];
-static int mt_cost;
+static int mt_length; 
 static int mt_grp;
 static char mt_name[20];
+static short mouse_buffer_fresh = 0;
 
 void check_bulldoze_area (int x, int y);
 
+/* Mouse registry */
 
-/* GCS -- we should get rid of mouse repeat. */
-void
-cs_mouse_repeat (void)
-{
-    /* called from main loop when cs_mouse_button==LC_MOUSE_LEFTBUTTON */
-    if (cs_mouse_button_repeat <= real_time)
-	cs_mouse_handler (cs_mouse_button, 0, 0);
-    /* cs_mouse_button_repeat zeroed by handler */
-}
+static int mhandle_count;
+
+static Mouse_Handle * mhandle_first;
+static Mouse_Handle * mhandle_last;
+static Mouse_Handle * mhandle_current;
+
+/* Screen area mouse handles */
+/* XXX: These handlers should live elsewhere */
+static Mouse_Handle * main_win_mhandle;
+static Mouse_Handle * other_buttons_mhandle;
+static Mouse_Handle * market_cb_mhandle;
+static Mouse_Handle * help_mhandle;
+static Mouse_Handle * loadsave_mhandle;
+
 
 /* ---------------------------------------------------------------------- *
  * cs_mouse_handler
@@ -55,6 +63,7 @@ cs_mouse_repeat (void)
  * mouse move, then enc_button is 0.  You cannot specify multiple 
  * mouse buttons clicked at the same time using this interface.
  * ---------------------------------------------------------------------- */
+
 void
 cs_mouse_handler (int enc_button, int dx, int dy)
 {
@@ -91,31 +100,15 @@ cs_mouse_handler (int enc_button, int dx, int dy)
 	move_mouse (cs_mouse_x, cs_mouse_y);
     x = cs_mouse_x;
     y = cs_mouse_y;
-#ifdef DEBUG_MOUSE
-    printf ("button=%d enc=%d %d%d%d\n", button, enc_button, 
-	    buttons[0].pressed, buttons[1].pressed, buttons[2].pressed);
-    printf ("cs_mouse_button=%d  button=%d\n", cs_mouse_button, button);
-#endif
 
     /* see if we are all the way up */
     if (!mouse_initialized)
 	return;
 
-    group = get_group_of_type(selected_type);
-    
     /* button press */
     if (button_pressed) {
 
 	/* maintain button press status */
-
-	/* WCK: The button argument now comes encoded from lcx11, with release
-	   events being the button number | 16.  I don't know of 
-	   anyone who has a 16 button mouse, so this should be 
-	   safe for a while.  The new
-	   argument is enc_button, with button holding the value of the
-	   pressed button, or 0 if a button was released.  The coordinates of
-	   the presses and releases are stored in buttons */
-
 	pixel_to_mappoint(cs_mouse_x, cs_mouse_y, 
 			  &buttons[button_idx].mappoint_x, 
 			  &buttons[button_idx].mappoint_y);
@@ -123,122 +116,91 @@ cs_mouse_handler (int enc_button, int dx, int dy)
 	buttons[button_idx].y = cs_mouse_y;
 	buttons[button_idx].pressed = 1;
 
-#ifdef DEBUG_MOUSE
-	printf ("button %d pressed at %d , %d\t mappoint %d , %d\n",
-		button, cs_mouse_x, cs_mouse_y, buttons[button_idx].r_mappoint_x,
-		buttons[button_idx].r_mappoint_y);
-#endif
+	/* Try the event list before moving on to special cases */
+	if (!mouse_handle_click(x, y, button)) {
+	    switch (button) {
+	    case LC_MOUSE_LEFTBUTTON:
+		if (market_cb_flag) {
+		    do_market_cb_mouse (x, y);
+		    break;
+		}
+		else if (port_cb_flag) {
+		    do_port_cb_mouse (x, y);
+		    break;
+		}
+		else if (help_flag) {
+		    do_help_mouse (x, y, button);
+		    break;
+		}
+		else if (prefs_flag) {
+		    do_prefs_mouse (x, y, button);
+		    break;
+		}
 
+		else if (load_flag || save_flag) 
+		    return;
 
-	/* wcoreyk:
-	   maybe we should wait for button releases when selecting 
-	   something with the mouse.  When the release comes, 
-	   we could compare press and
-	   release coordinates, and use that to determine our action.  This
-	   would allow an escape mechanism for placing expensive items.  e.g:
-	   when placing a rocket you accidentally click 1 line off from where 
-	   you really want it.  If you held the mouse button, you could move
-	   the rocket to where you want it.  Or, moving the mouse off of the
-	   position could simply cancel the build.  More interesting side
-	   effects could be the ability to drop a menu down for residential 
-	   units, or any other groups of units that could fit together 
-	   appropriately.  Of course, all of this could be re-inventing the
-	   wheel, but I feel like I should invent it just once and see how
-	   well mine rolls. */
+		/* This is the main screen */
+		if (mouse_in_rect(&scr.main_win,x,y)) {
+		    do_mouse_main_win(x, y, button);
+		    refresh_main_screen ();
+		    break;
+		}
 
-	switch (button) {
-	case LC_MOUSE_LEFTBUTTON:
-	    cs_mouse_button_repeat = real_time + 500;
+		/* Other points too */
+		do_mouse_other_buttons(x, y, button);
 	
-	    if (market_cb_flag) {
-		do_market_cb_mouse (x, y);
 		break;
-	    }
-	    else if (port_cb_flag) {
-		do_port_cb_mouse (x, y);
-		break;
-	    }
-	    else if (help_flag) {
-		do_help_mouse (x, y, button);
-		break;
-	    }
-	    else if (prefs_flag) {
-		do_prefs_mouse (x, y, button);
-		break;
-	    }
-	    else if (db_flag) {
-		do_db_mouse (x, y);
-		break;
-	    }
-	    else if (db_okflag) {
-		do_db_okmouse (x, y);
-		break;
-	    }
-	    else if (load_flag || save_flag) 
-		return;
-
-	    /* This is the main screen */
-	    if (mouse_in_rect(&scr.main_win,x,y)) {
-		do_mouse_main_win(x, y, button);
-		refresh_main_screen ();
-		break;
-	    }
-
-	    /* Other points too */
-	    do_mouse_other_buttons(x, y, button);
 	
-	    break;
-	
-	case LC_MOUSE_RIGHTBUTTON:
-	case LC_MOUSE_MIDDLEBUTTON:
-	/* GCS FIX: This is my fix for right clicks on 
-	    main screen during yn_dialogs causing dialog to 
-	    be overwritten by screen content (similar effect
-	    for market_cb overwritten by mps).  This fix could
-	    be better, but will be better to confirm behavior
-	    for X version before deciding final fix.
-	    */
-	    if (market_cb_flag) {
-		// should dismiss cb?
-		break;
-	    }
-	    else if (port_cb_flag) {
-		// should dismiss cb?
-		break;
-	    }
-	    else if (help_flag) {
-		// do_help_mouse (x, y, button);   maybe should??
-		break;
-	    }
-	    else if (prefs_flag) {
-		break;
-	    }
-	    else if (db_flag) {
-		break;
-	    }
-	    else if (db_okflag) {
-		break;
-	    }
-	    else if (load_flag || save_flag) 
-		return;
+	    case LC_MOUSE_RIGHTBUTTON:
+	    case LC_MOUSE_MIDDLEBUTTON:
+		/* GCS FIX: This is my fix for right clicks on 
+		   main screen during yn_dialogs causing dialog to 
+		   be overwritten by screen content (similar effect
+		   for market_cb overwritten by mps).  This fix could
+		   be better, but will be better to confirm behavior
+		   for X version before deciding final fix.
+		*/
+		if (market_cb_flag) {
+		    // should dismiss cb?
+		    break;
+		}
+		else if (port_cb_flag) {
+		    // should dismiss cb?
+		    break;
+		}
+		else if (help_flag) {
+		    // do_help_mouse (x, y, button);   maybe should??
+		    break;
+		}
+		else if (prefs_flag) {
+		    break;
+		}
+		else if (db_flag) {
+		    break;
+		}
+		else if (db_okflag) {
+		    break;
+		}
+		else if (load_flag || save_flag) 
+		    return;
 
-	    /* This is the main screen */
-	    if (mouse_in_rect(&scr.main_win,x,y)) {
-		do_mouse_main_win(x, y, button);
-		refresh_main_screen ();
+		/* This is the main screen */
+		if (mouse_in_rect(&scr.main_win,x,y)) {
+		    do_mouse_main_win(x, y, button);
+		    refresh_main_screen ();
+		    break;
+		}
+
+		/* Other points too */
+		do_mouse_other_buttons(x, y, button);
+
 		break;
+
+	    default: 
+		printf("Unknown mouse button in cs_mouse_handler\n");
 	    }
-
-	    /* Other points too */
-	    do_mouse_other_buttons(x, y, button);
-
-	    break;
-
-	default: 
-	    printf("Unknown mouse button in cs_mouse_handler\n");
-	}
-
-	/* button release */
+	} /* mouse_handle_click couldn't. */
     } else if (button_released) { 
 	button = enc_button - 16; /* probably shouldn't use this temporarily */
       
@@ -246,22 +208,13 @@ cs_mouse_handler (int enc_button, int dx, int dy)
 			  &buttons[button_idx].r_mappoint_x, 
 			  &buttons[button_idx].r_mappoint_y);
       
-#ifdef DEBUG_MOUSE
-	printf ("button %d released at %d , %d\t mappoint %d , %d\n",
-		button, cs_mouse_x, cs_mouse_y, buttons[button_idx].r_mappoint_x,
-		buttons[button_idx].r_mappoint_y);
-#endif
-
 	buttons[button_idx].r_x = cs_mouse_x;
 	buttons[button_idx].r_y = cs_mouse_y;
 	buttons[button_idx].pressed = 0;
       
 	switch (button) {
 	case LC_MOUSE_LEFTBUTTON:
-#if defined (DEBUG_MT_CODE)
-	    printf("calling mt_draw(MT_SUCCESS)\n");
-#endif
-	    mt_draw(cs_mouse_x, cs_mouse_y, MT_SUCCESS);  
+	    mt_draw(cs_mouse_x, cs_mouse_y, MT_SUCCESS);
 	    break;
 	case LC_MOUSE_RIGHTBUTTON:
 	    break;
@@ -275,7 +228,7 @@ cs_mouse_handler (int enc_button, int dx, int dy)
 	/* mouse moved */
     } else {
 	if (buttons[LC_MOUSE_LEFTBUTTON-1].pressed 
-	    && GROUP_IS_TRANSPORT(group))
+	    && GROUP_IS_TRANSPORT(selected_module_group))
 	{
 	    mt_draw(cs_mouse_x, cs_mouse_y, MT_CONTINUE);
 	}
@@ -290,13 +243,7 @@ move_mouse (int x, int y)
     int size;
     int grp;
 
-    if( (grp = get_group_of_type(selected_type)) < 0 ) return;
-
-#ifdef DEBUGMOUSE
-    printf ("In move_mouse()\n");
-#endif
-
-    size = (main_groups[grp].size) * 16;
+    size = (main_groups[selected_module_group].size) * 16;
 
     /* GCS: we don't check for load_flag/save_flag because these guys
        set db_flag = 1 */
@@ -326,9 +273,6 @@ move_mouse (int x, int y)
     }
     else
     {
-#ifdef DEBUGMOUSE
-	printf ("mox=%d moy=%d x=%d y=%d\n", mox, moy, x, y);
-#endif
 	hide_mouse ();
 	mouse_hide_count--;
 	draw_normal_mouse (x, y);
@@ -336,32 +280,28 @@ move_mouse (int x, int y)
 	    && port_cb_flag == 0)
 	{
 	    mappoint_stats_flag = 0;
-	    unrequest_mappoint_stats ();
-#if defined (commentout)
-	    draw_diffgraph ();
-#endif
 	    update_scoreboard.mps = 1;
 	}
     }
-#ifdef DEBUGMOUSE
-    printf ("Got to the end of move_mouse()\n");
-#endif
 }
 
 void
 hide_mouse (void)
 {
-    if (mouse_type == MOUSE_TYPE_SQUARE)
-	hide_square_mouse ();
-    else
-	hide_normal_mouse ();
     mouse_hide_count++;
+    if (mouse_hide_count == 1) {
+	if (mouse_type == MOUSE_TYPE_SQUARE)
+	    hide_square_mouse ();
+	else
+	    hide_normal_mouse ();
+    }
 }
 
 void
 redraw_mouse (void)
 {
-    if (--mouse_hide_count > 0)
+    mouse_hide_count--;
+    if (mouse_hide_count > 0)
 	return;
     mouse_hide_count = 0;
     if (mouse_type == MOUSE_TYPE_SQUARE)
@@ -388,6 +328,7 @@ draw_square_mouse (int x, int y, int size)	/* size is pixels */
     Fgl_getbox (x - 2, y, 2, size, under_square_mouse_pointer_left);
     Fgl_getbox (x + size, y, 2, size, under_square_mouse_pointer_right);
     Fgl_getbox (x - 2, y + size, size + 4, 2, under_square_mouse_pointer_bottom);
+    mouse_buffer_fresh = 1;
 
     Fgl_hline (x - 2, y - 2, x + size + 1, yellow (31));
     Fgl_hline (x - 1, y - 1, x + size, blue (31));
@@ -404,20 +345,22 @@ void
 hide_square_mouse (void)
 {
     int size;
-    int grp;
 
-    if( (grp = get_group_of_type(selected_type)) < 0 ) return;
-
-    size = (main_groups[grp].size) * 16;
+    size = (main_groups[selected_module_group].size) * 16;
 #if defined (WIN32)
     cs_square_mouse_visible = 0;
     RefreshArea (omx - 3, omy - 3, omx + size + 2, omy + size + 2);
 #else
-    Fgl_putbox (omx - 2, omy - 2, size + 4, 2, under_square_mouse_pointer_top);
-    Fgl_putbox (omx - 2, omy, 2, size, under_square_mouse_pointer_left);
-    Fgl_putbox (omx + size, omy, 2, size, under_square_mouse_pointer_right);
-    Fgl_putbox (omx - 2, omy + size, size + 4, 2, 
-		under_square_mouse_pointer_bottom);
+    if (mouse_buffer_fresh) {
+      Fgl_putbox (omx - 2, omy - 2, size + 4, 2, under_square_mouse_pointer_top);
+      Fgl_putbox (omx - 2, omy, 2, size, under_square_mouse_pointer_left);
+      Fgl_putbox (omx + size, omy, 2, size, under_square_mouse_pointer_right);
+      Fgl_putbox (omx - 2, omy + size, size + 4, 2, 
+		  under_square_mouse_pointer_bottom);
+      mouse_buffer_fresh = 0;
+    } else {
+      //      printf ("Mouse buffer stale in hide_mouse!  Not putting back!\n");
+    }
 #endif
 }
 
@@ -425,11 +368,8 @@ void
 redraw_square_mouse (void)
 {
     int size;
-    int grp;
 
-    if ((grp = get_group_of_type(selected_type)) < 0 ) return;
-
-    size = (main_groups[grp].size) * 16;
+    size = (main_groups[selected_module_group].size) * 16;
 
 #if defined (WIN32)
     cs_square_mouse_visible = 1;
@@ -439,6 +379,7 @@ redraw_square_mouse (void)
     Fgl_getbox (omx - 2, omy, 2, size, under_square_mouse_pointer_left);
     Fgl_getbox (omx + size, omy, 2, size, under_square_mouse_pointer_right);
     Fgl_getbox (omx - 2, omy + size, size + 4, 2, under_square_mouse_pointer_bottom);
+    mouse_buffer_fresh = 1;
 
     Fgl_hline (omx - 2, omy - 2, omx + size + 1, yellow (31));
     Fgl_hline (omx - 1, omy - 1, omx + size, blue (31));
@@ -507,183 +448,15 @@ redraw_normal_mouse (void)
 #endif
 }
 
-
-
-void 
-do_mouse_select_buttons (int rawx, int rawy, int mbutton)
-{
-    Rect* sbw = &scr.select_buttons;
-    int x, y;
-    int button = -1;
-    int rows;
-    int row, col;
-    x = rawx - sbw->x;
-    y = rawy - sbw->y;
-
-    rows = (sbw->h / (SELECT_BUTTON_INTERVAL));
-
-#ifdef DEBUG_SELECT_BUTTONS    
-    printf ("do_mouse_select_buttons() x=%d y=%d\n", x, y);
-#endif
-
-    row = (y / (SELECT_BUTTON_INTERVAL));
-    if ((y % SELECT_BUTTON_INTERVAL) <= 8) 
-      return;  /* in the gap */
-    
-    col = (x / (SELECT_BUTTON_INTERVAL));
-    if ((x % SELECT_BUTTON_INTERVAL) <= 8) 
-      return;
-    
-    button = row + (rows * col);
-
-#ifdef DEBUG_SELECT_BUTTONS    
-    printf("rows %d\n",rows);
-
-    printf("do_mouse_select_buttons: row %d\tcol %d\tbutton %d\n",
-	   row, col, button);
-#endif    
-    do_select_button (button, mbutton);
-
-}
-
-
-
-void
-do_select_button (int button, int mbutton)
-{
-    Rect* b = &scr.select_message;
-    char s[100];
-    short grp;
-    if (select_button_tflag[button] == 0 && mbutton != LC_MOUSE_RIGHTBUTTON) {
-	ok_dial_box ("not_enough_tech.mes", BAD, 0L);
-	return;
-    }
-    if (mbutton == LC_MOUSE_RIGHTBUTTON 
-	|| select_button_help_flag[button] == 0)
-    {
-	activate_help (select_button_help[button]);
-	if (mbutton != LC_MOUSE_RIGHTBUTTON)
-	    select_button_help_flag[button] = 1;
-	if (mbutton == LC_MOUSE_RIGHTBUTTON)
-	    return;
-    }
-    selected_button = button;
-    unhighlight_select_button (old_selected_button);
-    highlight_select_button (button);
-    old_selected_button = button;
-    selected_type = select_button_type[button];
-    if (selected_type == CST_RESIDENCE_LL) {
-	choose_residence ();
-    }
-    grp = get_group_of_type(selected_type);
-    if (grp < 0) return;
-
-#ifdef USE_EXPANDED_FONT
-    Fgl_fillbox (SELECT_BUTTON_MESSAGE_X, SELECT_BUTTON_MESSAGE_Y,
-		 44 * 8, 8, 0);
-    Fgl_fillbox (SELECT_BUTTON_MESSAGE_X, SELECT_BUTTON_MESSAGE_Y,
-		 44 * 8, 8, blue (10));
-    gl_setwritemode (WRITEMODE_MASKED | FONT_EXPANDED);
-#else
-    Fgl_fillbox (b->x, b->y, 42 * 8, 8, TEXT_BG_COLOUR);
-#endif
-    selected_type_cost = get_group_cost(grp);
-    if (grp == GROUP_BARE) {
-	sprintf (s, " Bulldoze - cost POA");
-#ifdef LC_X11
-	XDefineCursor (display.dpy, display.win, pirate_cursor);
-#endif
-    } else {
-	sprintf (s, "%s %d  Bulldoze %d", main_groups[grp].name,
-		 selected_type_cost, main_groups[grp].bul_cost);
-#ifdef LC_X11
-	XDefineCursor (display.dpy, display.win, None);
-#endif
-    }
-    Fgl_write (b->x, b->y, s);
-#ifdef USE_EXPANDED_FONT
-    gl_setwritemode (WRITEMODE_OVERWRITE | FONT_EXPANDED);
-#endif
-    if (selected_type == CST_GREEN) {
-	draw_main_window_box (red (8));
-    } else {
-	draw_main_window_box (green (8));
-	monument_bul_flag = 0;
-	river_bul_flag = 0;
-    }
-}
-
-void
-highlight_select_button (int button)
-{
-    Rect* sbw = &scr.select_buttons;
-    int x, y, q;
-    if (button < NUMOF_SELECT_BUTTONS_DOWN)
-    {
-	x = 8 + sbw->x;
-	y = 8 + (button * 24) + sbw->y;
-    }
-    else
-    {
-	x = 8 + 24 + sbw->x;
-	y = 8 + ((button - NUMOF_SELECT_BUTTONS_DOWN) * 24) + sbw->y;
-    }
-    hide_mouse ();
-    for (q = 0; q < 3; q++)
-    {
-	Fgl_hline (x - 1 - q, y - 1 - q, x + 16 + q, yellow (16 + q * 4));
-	Fgl_hline (x - 1 - q, y + q + 16, x + 16 + q, yellow (16 + q * 4));
-	Fgl_line (x - 1 - q, y - 1 - q, x - 1 - q, y + q + 16, yellow (16 + q * 4));
-	Fgl_line (x + 16 + q, y - 1 - q, x + 16 + q, y + q + 16, yellow (16 + q * 4));
-    }
-    redraw_mouse ();
-}
-
-void
-unhighlight_select_button (int button)
-{
-    Rect* sbw = &scr.select_buttons;
-    int x, y, q;
-    if (button < NUMOF_SELECT_BUTTONS_DOWN)
-    {
-	x = 8 + sbw->x;
-	y = 8 + (button * 24) + sbw->y;
-    }
-    else
-    {
-	x = 8 + 24 + sbw->x;
-	y = 8 + ((button - NUMOF_SELECT_BUTTONS_DOWN) * 24) + sbw->y;
-    }
-    hide_mouse ();
-    for (q = 0; q < 3; q++)
-    {
-	Fgl_hline (x - 1 - q, y - 1 - q, x + 16 + q, blue (16 + q * 4));
-	Fgl_hline (x - 1 - q, y + q + 16, x + 16 + q, blue (16 + q * 4));
-	Fgl_line (x - 1 - q, y - 1 - q, x - 1 - q, y + q + 16, blue (16 + q * 4));
-	Fgl_line (x + 16 + q, y - 1 - q, x + 16 + q, y + q + 16, blue (16 + q * 4));
-    }
-    redraw_mouse ();
-}
-
-
-
 void
 do_mouse_main_win (int px, int py, int button)
 {
     Rect* mw = &scr.main_win;
-    int g, size;
+    int size;
     int x, y; /* mappoint */
-
-#ifdef DEBUG_MAIN_SCREEN
-    printf ("In do_mouse_main_win() mappoint x=%d y=%d type=%d\n",
-	    (x - main->x) / 16, (y - main->y) / 16, selected_type);
-#endif
 
     if (button == LC_MOUSE_MIDDLEBUTTON)
 	return;
-
-    g = get_group_of_type(selected_type);
-    if (g < 0) return;
 
     pixel_to_mappoint(px, py, &x, &y);
 
@@ -698,29 +471,21 @@ do_mouse_main_win (int px, int py, int button)
     }
 
     /* Handle multitransport */
-    if (button == LC_MOUSE_LEFTBUTTON && GROUP_IS_TRANSPORT(g) 
-      && overwrite_transport_flag) {
-	if (mt_draw (px, py, MT_START))
+    if (button == LC_MOUSE_LEFTBUTTON && 
+	GROUP_IS_TRANSPORT(selected_module_group)) {
+	if (mt_draw (px, py, MT_START)) {
+	    /* We need to set mps to current location, since the user might 
+	       click on the transport to see the mps */
+	    mappoint_stats (x, y, button);
 	    return;
+	}
     }
-      
+
     /* Handle bulldozing */
-    if (selected_type == CST_GREEN && button != LC_MOUSE_RIGHTBUTTON) {
+    if (selected_module_type == CST_GREEN && button != LC_MOUSE_RIGHTBUTTON) {
 	check_bulldoze_area (x, y);
 	return;
     }
-#if defined (commentout)
-    else if (overwrite_transport_flag
-	     && (main_groups[g].group == GROUP_TRACK
-		 || main_groups[g].group == GROUP_ROAD
-		 || main_groups[g].group == GROUP_RAIL)
-	     && (MP_GROUP(x,y) == GROUP_TRACK
-		 || MP_GROUP(x,y) == GROUP_ROAD
-		 || MP_GROUP(x,y) == GROUP_RAIL)
-	     && main_groups[g].group != MP_GROUP(x,y)) {
-	check_bulldoze_area (x, y);        /* continue to place new */
-    }
-#endif
 
     /* Bring up mappoint_stats for certain left mouse clicks */
     if (MP_TYPE(x,y) != CST_GREEN) {
@@ -733,9 +498,9 @@ do_mouse_main_win (int px, int py, int button)
     }
 
     /* OK, by now we are certain that the user wants to place the item.  
-       Set the origin based on the size of the selected_type, and 
+       Set the origin based on the size of the selected_module_type, and 
        see if the selected item will fit. */
-    size = main_groups[g].size;
+    size = main_groups[selected_module_group].size;
     if (px > (mw->x + mw->w) - size*16)
 	px = (mw->x + mw->w) - size*16;
     if (py > (mw->y + mw->h) - size*16)
@@ -771,14 +536,13 @@ do_mouse_main_win (int px, int py, int button)
     }
 
     /* Place the selected item */
-    switch (place_item (x, y, selected_type)) {
+    switch (place_item (x, y, selected_module_type)) {
     case 0:
 	/* Success */
-	print_total_money ();
 	break;
     case -1:
 	/* Not enough money */
-	no_credit_build_msg (g);
+	no_credit_build_msg (selected_module_group);
 	break;
     case -2:
 	/* Improper port placement */
@@ -798,109 +562,10 @@ void
 do_mouse_other_buttons (int x, int y, int button)
 {
     Rect* mw = &scr.main_win;
-#if defined (commentout)
-    /* these must be checked for before the scroll areas. */
-    /* this is the quit button */
-    if (mouse_in_rect (&scr.quit_button,x,y)) {
-	quit_flag = 1;
-	if (pause_flag)
-	    let_one_through = 1;
-    }
 
-    /* this is the load button */
-    else if (mouse_in_rect (&scr.load_button,x,y)) {
-	if (save_flag == 0)
-	    load_flag = 1;
-    }
-#endif
-    if (0) {}
-
-    /* this is the pause button */
-    else if (mouse_in_rect (&scr.pause_button,x,y)) {
-	if (button == LC_MOUSE_RIGHTBUTTON) {
-	    activate_help ("pause.hlp");
-	    return;
-	}
-	select_pause ();
-    }
+    if (0) {} /* XXX: Cute, very cute */
 
     /* main screen border scroll areas */
-#if defined (commentout)
-    /* up */
-    else if (x >= (mw->x - 8) && x < (mw->x + mw->w + 8)
-	     && y >= (mw->y - 8) && y < mw->y
-	     && main_screen_originy > 1)
-    {
-	if (button == LC_MOUSE_RIGHTBUTTON)
-	{
-	    main_screen_originy -= RIGHT_MOUSE_MOVE_VAL;
-	    if (main_screen_originy < 1)
-		main_screen_originy = 1;
-	}
-	else
-	    main_screen_originy--;
-	/*
-	  // we have a normal mouse so it
-	  // won't be taken care
-	  // of in refresh_main_screen.
-	*/
-	request_main_screen ();
-	hide_mouse ();
-	refresh_main_screen ();
-	redraw_mouse ();
-
-    }
-    /* down */
-    else if (x >= (mw->x - 8) && x < (mw->x + mw->w + 8)
-	     && y > (mw->y + mw->h)
-	     && y < (mw->y + mw->h + 16)	/* 16 for bigger area */
-	     && main_screen_originy < (WORLD_SIDE_LEN - mw->h / 16) - 1)
-    {
-	if (button == LC_MOUSE_RIGHTBUTTON)
-	{
-	    main_screen_originy += RIGHT_MOUSE_MOVE_VAL;
-	    if (main_screen_originy
-		> (WORLD_SIDE_LEN - mw->h / 16) - 2)
-		main_screen_originy
-			= (WORLD_SIDE_LEN - mw->h / 16) - 2;
-	}
-	main_screen_originy++;
-	request_main_screen ();
-	refresh_main_screen ();
-    }
-    /* left */
-    else if (x >= (mw->x - 16) && x < mw->x
-	     && y >= (mw->y - 8) && y < (mw->y + mw->h + 8)
-	     && main_screen_originx > 1)
-    {
-	if (button == LC_MOUSE_RIGHTBUTTON) {
-	    main_screen_originx -= RIGHT_MOUSE_MOVE_VAL;
-	    if (main_screen_originx < 1)
-		main_screen_originx = 1;
-	} else {
-	    main_screen_originx--;
-	}
-	request_main_screen ();
-	hide_mouse ();
-	refresh_main_screen ();
-	redraw_mouse ();
-    }
-    /* right */
-    else if (x > (mw->x + mw->w)
-	     && x < (mw->x + mw->w + 8)
-	     && y > (mw->y - 8) && y < (mw->y + mw->w + 8)
-	     && main_screen_originx < (WORLD_SIDE_LEN - mw->w / 16) - 1)
-    {
-	if (button == LC_MOUSE_RIGHTBUTTON) {
-	    main_screen_originx += RIGHT_MOUSE_MOVE_VAL;
-	    if (main_screen_originx > (WORLD_SIDE_LEN - mw->w / 16) - 2)
-		main_screen_originx = (WORLD_SIDE_LEN - mw->w / 16) - 2;
-	}
-	main_screen_originx++;
-	request_main_screen ();
-	refresh_main_screen ();
-    }
-#endif
 
     /* up */
     else if (x >= (mw->x - 8) && x < (mw->x + mw->w + 8)
@@ -949,244 +614,43 @@ do_mouse_other_buttons (int x, int y, int button)
 	adjust_main_origin (new_origin_x, main_screen_originy, 1);
     }
 
-    /* These are the select buttons */
-    else if (mouse_in_rect(&scr.select_buttons,x,y)) {
-	do_mouse_select_buttons (x, y, button);
-    }
-
     /* This is the mini window. Clicking here move the main window 
        to this point 
     */
-    else if (mouse_in_rect (&scr.mini_map,x,y)) {
-	Rect* b = &scr.mini_map;
-	if (button == LC_MOUSE_RIGHTBUTTON) {
-	    activate_help ("mini-screen.hlp");
-	    return;
-	}
-	if (mini_screen_flags == MINI_SCREEN_COAL_FLAG && !coal_survey_done) {
-	    if (yn_dial_box ("Coal survey"
-			     ,"This will cost you 1 million"
-			     ,"After that it's is free to call again"
-			     ,"Do coal survey?") == 0)
-	    {
-		return;
-	    }
-	    do_coal_survey ();
-	    print_total_money ();
-	    return;
-	}
-#if defined (commentout)
-	main_screen_originx = x - b->x - mw->w / 32;
-	if (main_screen_originx > (WORLD_SIDE_LEN - mw->w / 16) - 1)
-	    main_screen_originx = (WORLD_SIDE_LEN - mw->w / 16) - 1;
-	if (main_screen_originx <= 0)
-	    main_screen_originx = 1;
-	main_screen_originy = y - b->y - mw->h / 32;
-	if (main_screen_originy > (WORLD_SIDE_LEN - mw->h / 16) - 1)
-	    main_screen_originy = (WORLD_SIDE_LEN - mw->h / 16) - 1;
-	if (main_screen_originy <= 0)
-	    main_screen_originy = 1;
-	request_main_screen ();
-	hide_mouse ();
-	refresh_main_screen ();
-	redraw_mouse ();
-#endif
-	adjust_main_origin (x - b->x - mw->w / 32, y - b->y - mw->h / 32, 1);
-	
-	if (mini_screen_flags == MINI_SCREEN_PORT_FLAG)
-	    draw_mini_screen ();
-    }
 
-    else if (mouse_in_rect (&scr.mini_map_aux,x,y)) {
-	if (button == LC_MOUSE_RIGHTBUTTON) {
-	    activate_help ("mini-screen.hlp");
-	    return;
-	}
-	rotate_mini_screen ();
-    }
-
-#if defined (commentout)
-    /* this is the normal button to return the mini screen to normal. */
-    else if (mouse_in_rect (&scr.ms_normal_button,x,y)) {
-	if (button == LC_MOUSE_RIGHTBUTTON) {
-	    activate_help ("msb-normal.hlp");
-	    return;
-	}
-	unrequest_mini_screen ();
-	draw_mini_screen ();
-    }
-    /* this is the pollution button to activate the mini screen pol'n mode. */
-    else if (mouse_in_rect (&scr.ms_pollution_button,x,y)) {
-	if (button == LC_MOUSE_RIGHTBUTTON) {
-	    activate_help ("msb-pol.hlp");
-	    return;
-	}
-	request_mini_screen (MINI_SCREEN_POL_FLAG);
-	draw_mini_screen_pollution ();
-    }
-    /* this is the fire cover button to activate the mini screen. */
-    else if (mouse_in_rect (&scr.ms_fire_cover_button,x,y)) {
-	if (button == LC_MOUSE_RIGHTBUTTON) {
-	    activate_help ("msb-fire.hlp");
-	    return;
-	}
-	request_mini_screen (MINI_SCREEN_FIRE_COVER);
-	draw_mini_screen_fire_cover ();
-    }
-    /* this is the health cover button to activate the mini screen. */
-    else if (mouse_in_rect (&scr.ms_health_cover_button,x,y)) {
-	if (button == LC_MOUSE_RIGHTBUTTON) {
-	    activate_help ("msb-health.hlp");
-	    return;
-	}
-	request_mini_screen (MINI_SCREEN_HEALTH_COVER);
-	draw_mini_screen_health_cover ();
-    }
-    /* this is the cricket cover button to activate the mini screen. */
-    else if (mouse_in_rect (&scr.ms_cricket_cover_button,x,y)) {
-	if (button == LC_MOUSE_RIGHTBUTTON) {
-	    activate_help ("msb-cricket.hlp");
-	    return;
-	}
-	request_mini_screen (MINI_SCREEN_CRICKET_COVER);
-	draw_mini_screen_cricket_cover ();
-    }
-    /* this is the ub40 button */
-    else if (mouse_in_rect (&scr.ms_ub40_button,x,y)) {
-	if (button == LC_MOUSE_RIGHTBUTTON) {
-	    activate_help ("msb-ub40.hlp");
-	    return;
-	}
-	request_mini_screen (MINI_SCREEN_UB40_FLAG);
-	draw_mini_screen_ub40 ();
-    }
-    /* this is the coal reserve button */
-    else if (mouse_in_rect (&scr.ms_coal_button,x,y)) {
-	if (button == LC_MOUSE_RIGHTBUTTON) {
-	    activate_help ("msb-coal.hlp");
-	    return;
-	}
-	if (coal_survey_done == 0) {
-	    if (yn_dial_box ("Coal survey"
-			     ,"This will cost you 1 million"
-			     ,"After that it's is free to call again"
-			     ,"Do coal survey?") != 0)
-	    {
-		do_coal_survey ();
-		print_total_money ();
-		request_mini_screen (MINI_SCREEN_COAL_FLAG);
-		draw_mini_screen_coal ();
-	    }
-	    return;
-	}
-	else {
-	    request_mini_screen (MINI_SCREEN_COAL_FLAG);
-	    draw_mini_screen_coal ();
-	}
-    }
-    /* this is the starving button */
-    else if (mouse_in_rect (&scr.ms_starve_button,x,y)) {
-	if (button == LC_MOUSE_RIGHTBUTTON) {
-	    activate_help ("msb-starve.hlp");
-	    return;
-	}
-	request_mini_screen (MINI_SCREEN_STARVE_FLAG);
-	draw_mini_screen_starve ();
-    }
-    /* this is the other costs button */
-    else if (mouse_in_rect (&scr.ms_ocost_button,x,y)) {
-	if (button == LC_MOUSE_RIGHTBUTTON) {
-	    activate_help ("msb-money.hlp");
-	    return;
-	}
-	draw_mini_screen_ocost ();
-    }
-    /* this is the mini screen power button */
-    else if (mouse_in_rect (&scr.ms_power_button,x,y)) {
-	if (button == LC_MOUSE_RIGHTBUTTON) {
-	    activate_help ("msb-power.hlp");
-	    return;
-	}
-	draw_mini_screen_power ();
-    }
-#endif
+/*** Miniscreen selector buttons removed in CVS Revision 1.24 ***/
 
     /* this is the menu button */
     else if (mouse_in_rect (&scr.menu_button,x,y)) {
 	activate_help ("menu.hlp");
     }
-#if defined (commentout)
+
     /* this is the help button */
     else if (mouse_in_rect (&scr.help_button,x,y)) {
 	activate_help ("index.hlp");
     }
 
-    /* this is the save button */
-    else if (mouse_in_rect (&scr.save_button,x,y)) {
-	if (load_flag == 0)
-	    save_flag = 1;
-    }
-#endif
-
-#if defined (commentout)
     /* this is the results (stats) button */
     else if (mouse_in_rect (&scr.results_button,x,y)) {
 	if (button == LC_MOUSE_RIGHTBUTTON)
 	    return;
 	window_results ();
     }
-    /* this is the overwrite transport button button */
-    else if (mouse_in_rect (&scr.tover_button,x,y)) {
-	if (button == LC_MOUSE_RIGHTBUTTON) {
-	    activate_help ("tover.hlp");
-	    return;
-	}
-	select_tover ();
-    }
-
-#ifdef LC_X11
-    /* this is the confine mouse pointer button */
-    else if (mouse_in_rect (&scr.confine_button,x,y)) {
-	if (button == LC_MOUSE_RIGHTBUTTON) {
-	    activate_help ("confinep.hlp");
-	    return;
-	}
-	select_confine ();
-    }
-#endif
-#endif
-
-    /* this is the slow button */
-    else if (mouse_in_rect (&scr.slow_button,x,y)) {
-	if (button == LC_MOUSE_RIGHTBUTTON) {
-	    activate_help ("slow.hlp");
-	    return;
-	}
-	select_slow ();
-    }
-
-    /* this is the medium button */
-    else if (mouse_in_rect (&scr.med_button,x,y)) {
-	if (button == LC_MOUSE_RIGHTBUTTON) {
-	    activate_help ("medium.hlp");
-	    return;
-	}
-	select_medium ();
-    }
-
-    /* this is the fast button */
-    else if (mouse_in_rect (&scr.fast_button,x,y)) {
-	if (button == LC_MOUSE_RIGHTBUTTON) {
-	    activate_help ("fast.hlp");
-	    return;
-	}
-	select_fast ();
-    }
 
     /* Advance mps screen if clicked on */
     else if (mouse_in_rect (&scr.mappoint_stats,x,y)) {
 	if (button == LC_MOUSE_RIGHTBUTTON) {
-	    activate_help ("stats.hlp");
+	    switch (mps_global_style) {
+	    case MPS_GLOBAL_FINANCE:
+		activate_help ("finance.hlp");
+		break;
+	    case MPS_GLOBAL_OTHER_COSTS:
+		activate_help ("other-costs.hlp");
+		break;
+	    case MPS_GLOBAL_HOUSING:
+		activate_help ("housing.hlp");
+		break;
+	    }
 	    return;
 	}
 	advance_mps_style ();
@@ -1276,13 +740,14 @@ check_bulldoze_area (int x, int y)
 	return;
       river_bul_flag = 1;
     }
-  else if (g == GROUP_SHANTY)
+  else if (g == GROUP_SHANTY && shanty_bul_flag == 0)
     {
       if (yn_dial_box ("WARNING"
 		       ,"Bulldozing a shanty town costs a"
 		       ,"lot of money and may cause a fire."
 		       ,"Want to buldoze?") == 0)
 	return;
+      shanty_bul_flag = 1;
     }
   else if (g == GROUP_TIP)
     {
@@ -1337,34 +802,6 @@ drag_screen (void)
     origin_y =  
 	    buttons[LC_MOUSE_MIDDLEBUTTON-1].mappoint_y - cur_winpoint_y;  
 
-#ifdef DEBUG_MOUSE_DRAG 
-    printf("drag_screen: cwp_x = %d, cwp_y = %d, mappoint_x=%d\n",
-	   cur_winpoint_x, cur_winpoint_y, buttons[LC_MOUSE_MIDDLEBUTTON-1].mappoint_x);
-#endif
-
-#if defined (commentout)
-    if (origin_y < 1)
-	origin_y = 1;
-    if (origin_x < 1)
-	origin_x = 1;
-
-    if (origin_x > WORLD_SIDE_LEN - mw->w / 16 - 2)
-	origin_x = WORLD_SIDE_LEN - mw->w / 16 - 2;
-    if (origin_y > WORLD_SIDE_LEN - mw->h / 16 - 2)
-	origin_y = WORLD_SIDE_LEN - mw->h / 16 - 2;
-
-    if ((main_screen_originx != origin_x) 
-	|| (main_screen_originy != origin_y))
-    {
-	main_screen_originx = origin_x;
-	main_screen_originy = origin_y;
-
-	request_main_screen ();
-	hide_mouse ();
-	refresh_main_screen ();
-	redraw_mouse ();
-    }
-#endif
     adjust_main_origin (origin_x, origin_y, 1);
 }
 
@@ -1374,6 +811,9 @@ do_market_cb_template (int x, int y, int is_market_cb)
     int old_flags = MP_INFO(mcbx,mcby).flags;
     Rect* mcb = &scr.market_cb;
     int is_sell;
+
+    static Mouse_Handle * checkbox_mhandle;
+    static Mouse_Handle * omni_mhandle;
 
     hide_mouse ();
     if (!mouse_in_rect(mcb,x,y)) {
@@ -1440,9 +880,11 @@ do_market_cb_template (int x, int y, int is_market_cb)
 
     redraw_mouse ();
 
+#if defined (NETWORK_ENABLE)
     if (MP_INFO(mcbx,mcby).flags != old_flags) {
 	send_flags (mcbx,mcby);
     }
+#endif
 }
 
 void
@@ -1455,229 +897,6 @@ void
 do_port_cb_mouse (int x, int y)
 {
     do_market_cb_template (x, y, 0);
-}
-
-#if defined (commentout)
-void
-do_market_cb_mouse (int x, int y)
-{
-    int old_flags = MP_INFO(mcbx,mcby).flags;
-    Rect* mcb = &scr.market_cb;
-
-    hide_mouse ();
-    /* buy col */
-    if (x >= mcb->x + 2 * 8 && x <= mcb->x + 16 * 8)
-    {
-	/* food */
-	if (y >= mcb->y + 3 * 8 + 4 && y <= mcb->y + 5 * 8 + 4)
-	{
-	    MP_INFO(mcbx,mcby).flags ^= FLAG_MB_FOOD;
-	    draw_cb_box (0, 0, MP_INFO(mcbx,mcby).flags & FLAG_MB_FOOD);
-	}
-	/* jobs */
-	else if (y >= mcb->y + 6 * 8 + 4 && y <= mcb->y + 8 * 8 + 4)
-	{
-	    MP_INFO(mcbx,mcby).flags ^= FLAG_MB_JOBS;
-	    draw_cb_box (1, 0, MP_INFO(mcbx,mcby).flags & FLAG_MB_JOBS);
-	}
-	/* coal */
-	else if (y >= mcb->y + 9 * 8 + 4 && y <= mcb->y + 11 * 8 + 4)
-	{
-	    MP_INFO(mcbx,mcby).flags ^= FLAG_MB_COAL;
-	    draw_cb_box (2, 0, MP_INFO(mcbx,mcby).flags & FLAG_MB_COAL);
-	}
-	/* ore */
-	else if (y >= mcb->y + 12 * 8 + 4 && y <= mcb->y + 14 * 8 + 4)
-	{
-	    MP_INFO(mcbx,mcby).flags ^= FLAG_MB_ORE;
-	    draw_cb_box (3, 0, MP_INFO(mcbx,mcby).flags & FLAG_MB_ORE);
-	}
-	/* goods */
-	else if (y >= mcb->y + 15 * 8 + 4 && y <= mcb->y + 17 * 8 + 4)
-	{
-	    MP_INFO(mcbx,mcby).flags ^= FLAG_MB_GOODS;
-	    draw_cb_box (4, 0, MP_INFO(mcbx,mcby).flags & FLAG_MB_GOODS);
-	}
-	/* steel */
-	else if (y >= mcb->y + 18 * 8 + 4 && y <= mcb->y + 20 * 8 + 4)
-	{
-	    MP_INFO(mcbx,mcby).flags ^= FLAG_MB_STEEL;
-	    draw_cb_box (5, 0, MP_INFO(mcbx,mcby).flags & FLAG_MB_STEEL);
-	}
-	else
-        {
-	    close_market_cb ();
-        }
-    }
-
-    /* sell col */
-    if (x >= mcb->x + 2 * 8 && x <= mcb->x + 16 * 8)
-    {
-	/* food */
-	if (y >= mcb->y + 3 * 8 + 4 && y <= mcb->y + 5 * 8 + 4)
-
-	{
-	    MP_INFO(mcbx,mcby).flags ^= FLAG_MS_FOOD;
-	    draw_cb_box (0, 1, MP_INFO(mcbx,mcby).flags & FLAG_MS_FOOD);
-	}
-	/* jobs */
-	else if (y >= mcb->y + 6 * 8 + 4 && y <= mcb->y + 8 * 8 + 4)
-	{
-	    MP_INFO(mcbx,mcby).flags ^= FLAG_MS_JOBS;
-	    draw_cb_box (1, 1, MP_INFO(mcbx,mcby).flags & FLAG_MS_JOBS);
-	}
-	/* coal */
-	else if (y >= mcb->y + 9 * 8 + 4 && y <= mcb->y + 11 * 8 + 4)
-	{
-	    MP_INFO(mcbx,mcby).flags ^= FLAG_MS_COAL;
-	    draw_cb_box (2, 1, MP_INFO(mcbx,mcby).flags & FLAG_MS_COAL);
-	}
-	/* ore */
-	else if (y >= mcb->y + 12 * 8 + 4 && y <= mcb->y + 14 * 8 + 4)
-	{
-	    MP_INFO(mcbx,mcby).flags ^= FLAG_MS_ORE;
-	    draw_cb_box (3, 1, MP_INFO(mcbx,mcby).flags & FLAG_MS_ORE);
-	}
-	/* goods */
-	else if (y >= mcb->y + 15 * 8 + 4 && y <= mcb->y + 17 * 8 + 4)
-	{
-	    MP_INFO(mcbx,mcby).flags ^= FLAG_MS_GOODS;
-	    draw_cb_box (4, 1, MP_INFO(mcbx,mcby).flags & FLAG_MS_GOODS);
-	}
-	/* steel */
-	else if (y >= mcb->y + 18 * 8 + 4 && y <= mcb->y + 20 * 8 + 4)
-	{
-	    MP_INFO(mcbx,mcby).flags ^= FLAG_MS_STEEL;
-	    draw_cb_box (5, 1, MP_INFO(mcbx,mcby).flags & FLAG_MS_STEEL);
-	}
-	else
-        {
-	    close_market_cb ();
-        }
-    }
-    else
-    {
-	close_market_cb ();
-    }
-    redraw_mouse ();
-
-    if (MP_INFO(mcbx,mcby).flags != old_flags) {
-	send_flags (mcbx,mcby);
-    }
-}
-
-void
-do_port_cb_mouse (int x, int y)
-{
-    int old_flags = MP_INFO(mcbx,mcby).flags;
-    Rect* mcb = &scr.market_cb;
-
-    hide_mouse ();
-    /* buy col */
-    if (x >= mcb->x + 2 * 8 && x <= mcb->x + 4 * 8)
-    {
-	/* food */
-	if (y >= mcb->y + 6 * 8 + 4 && y <= mcb->y + 8 * 8 + 4)
-        {
-	    MP_INFO(mcbx,mcby).flags ^= FLAG_MB_FOOD;
-	    draw_cb_box (1, 0, MP_INFO(mcbx,mcby).flags & FLAG_MB_FOOD);
-	}
-	/* coal */
-	else if (y >= mcb->y + 9 * 8 + 4 && y <= mcb->y + 11 * 8 + 4)
-        {
-	    MP_INFO(mcbx,mcby).flags ^= FLAG_MB_COAL;
-	    draw_cb_box (2, 0, MP_INFO(mcbx,mcby).flags & FLAG_MB_COAL);
-	}
-	/* ore */
-	else if (y >= mcb->y + 12 * 8 + 4 && y <= mcb->y + 14 * 8 + 4)
-	{
-	    MP_INFO(mcbx,mcby).flags ^= FLAG_MB_ORE;
-	    draw_cb_box (3, 0, MP_INFO(mcbx,mcby).flags & FLAG_MB_ORE);
-	}
-	/* goods */
-	else if (y >= mcb->y + 15 * 8 + 4 && y <= mcb->y + 17 * 8 + 4)
-	{
-	    MP_INFO(mcbx,mcby).flags ^= FLAG_MB_GOODS;
-	    draw_cb_box (4, 0, MP_INFO(mcbx,mcby).flags & FLAG_MB_GOODS);
-	}
-	/* steel */
-	else if (y >= mcb->y + 18 * 8 + 4 && y <= mcb->y + 20 * 8 + 4)
-	{
-	    MP_INFO(mcbx,mcby).flags ^= FLAG_MB_STEEL;
-	    draw_cb_box (5, 0, MP_INFO(mcbx,mcby).flags & FLAG_MB_STEEL);
-	}
-	else
-        {
-	    close_port_cb ();
-        }
-    }
-
-    /* sell col */
-    else if (x >= mcb->x + 14 * 8 && x <= mcb->x + 16 * 8)
-    {
-	/* food */
-	if (y >= mcb->y + 6 * 8 + 4 && y <= mcb->y + 8 * 8 + 4)
-	{
-	    MP_INFO(mcbx,mcby).flags ^= FLAG_MS_FOOD;
-	    draw_cb_box (1, 1, MP_INFO(mcbx,mcby).flags & FLAG_MS_FOOD);
-	}
-	/* coal */
-	else if (y >= mcb->y + 9 * 8 + 4 && y <= mcb->y + 11 * 8 + 4)
-	{
-	    MP_INFO(mcbx,mcby).flags ^= FLAG_MS_COAL;
-	    draw_cb_box (2, 1, MP_INFO(mcbx,mcby).flags & FLAG_MS_COAL);
-	}
-	/* ore */
-	else if (y >= mcb->y + 12 * 8 + 4 && y <= mcb->y + 14 * 8 + 4)
-	{
-	    MP_INFO(mcbx,mcby).flags ^= FLAG_MS_ORE;
-	    draw_cb_box (3, 1, MP_INFO(mcbx,mcby).flags & FLAG_MS_ORE);
-	}
-	/* goods */
-	else if (y >= mcb->y + 15 * 8 + 4 && y <= mcb->y + 17 * 8 + 4)
-	{
-	    MP_INFO(mcbx,mcby).flags ^= FLAG_MS_GOODS;
-	    draw_cb_box (4, 1, MP_INFO(mcbx,mcby).flags & FLAG_MS_GOODS);
-	}
-	/* steel */
-	else if (y >= mcb->y + 18 * 8 + 4 && y <= mcb->y + 20 * 8 + 4)
-	{
-	    MP_INFO(mcbx,mcby).flags ^= FLAG_MS_STEEL;
-	    draw_cb_box (5, 1, MP_INFO(mcbx,mcby).flags & FLAG_MS_STEEL);
-	}
-	else
-        {
-	    close_port_cb ();
-        }
-    }
-    else
-	close_port_cb ();
-    redraw_mouse ();
-
-    if (MP_INFO(mcbx,mcby).flags != old_flags) {
-	send_flags (mcbx,mcby);
-    }
-}
-#endif
-
-
-void
-do_db_mouse (int x, int y)
-{
-  if (x > db_yesbox_x1 && x < db_yesbox_x2
-      && y > db_yesbox_y1 && y < db_yesbox_y2)
-    db_yesbox_clicked = 1;
-  else if (x > db_nobox_x1 && x < db_nobox_x2
-	   && y > db_nobox_y1 && y < db_nobox_y2)
-    db_nobox_clicked = 1;
-}
-
-void
-do_db_okmouse (int x, int y)
-{
-  if (x > db_okbox_x1 && x < db_okbox_x2
-      && y > db_okbox_y1 && y < db_okbox_y2)
-    db_okbox_clicked = 1;
 }
 
 void 
@@ -1858,15 +1077,15 @@ mt_temp(int x, int y)
 	    } else {
 		MP_INFO(x,y).flags |= FLAG_MULTI_TRANS_PREV;
 	    }
-	    mt_cost++;
-	    MP_TYPE(x,y) = selected_type;
+	    mt_length++;
+	    MP_TYPE(x,y) = selected_module_type;
 	    MP_GROUP(x,y) = mt_grp;
 	    MP_INFO(x,y).flags |= FLAG_MULTI_TRANSPORT;
 	    return 1;
 	}
     } else if (MP_GROUP(x,y) == GROUP_BARE) { 
-	mt_cost++;
-	MP_TYPE(x,y) = selected_type;
+	mt_length++;
+	MP_TYPE(x,y) = selected_module_type;
 	MP_GROUP(x,y) = mt_grp;
 	MP_INFO(x,y).flags |= FLAG_MULTI_TRANSPORT;
 	return 1;
@@ -1887,11 +1106,11 @@ mt_perm(int x, int y)
 	    return 0;
 	} else {
 	    bulldoze_item(x,y);
-	    place_item (x,y,selected_type);
+	    place_item (x,y,selected_module_type);
 	    return 1;
 	}
     } else if (MP_GROUP(x,y) == GROUP_BARE) { 
-	place_item (x,y,selected_type);
+	place_item (x,y,selected_module_type);
 	return 1;
     }
     return 0;
@@ -1908,7 +1127,7 @@ do_mt_draw (int x1, int x2, int y1, int y2, int (*mode)())
     int ix = x1;
     int iy = y1;
 
-    mt_cost = 0;
+    mt_length = 0;
 
     if (!mode(ix, iy))
 	return 0;
@@ -1948,12 +1167,11 @@ do_mt_draw (int x1, int x2, int y1, int y2, int (*mode)())
     }
 }
 
-  
 int
 mt_draw (int cxp, int cyp, int flag) /* c[xy]p are pixel coordinates */
 {
 
-#define STATUS_MESSAGE_LENGTH 40
+#define STATUS_MESSAGE_LENGTH 80
     static int dx, dy; /* old current point; drawn point */
     static int ox, oy; /* coordinates for original button press */
     int cx, cy;   /* current mappoint coordinates */
@@ -1967,7 +1185,7 @@ mt_draw (int cxp, int cyp, int flag) /* c[xy]p are pixel coordinates */
 
     switch(flag) {
     case MT_SUCCESS:
-	if (ox == 0) 
+	if (ox == 0)
 	    return 0;
 	draw_ret = do_mt_draw(ox, dx, oy, dy, mt_erase);
 
@@ -1976,15 +1194,18 @@ mt_draw (int cxp, int cyp, int flag) /* c[xy]p are pixel coordinates */
 	       to build the road.  So clean up and exit. */
 	    mt_flag = 0;
 	    draw_main_window_box (green (8)); 
+	    status_message(NULL,25);
 	}
 	else if (draw_ret = do_mt_draw(ox, cx, oy, cy, mt_perm)) {
 
 	    print_total_money ();
 	    mt_flag = 0;
 	    draw_main_window_box (green (8)); 
+	    status_message(NULL,25);
 	} else {
 	    /* This shouldn't happen.  Clean up and continue anyway.  */
 	    mt_flag = 0;
+	    status_message(NULL,25);
 	    draw_main_window_box (green (8)); 
 	}
 	dx = 0; dy = 0;
@@ -1995,6 +1216,7 @@ mt_draw (int cxp, int cyp, int flag) /* c[xy]p are pixel coordinates */
 	mt_flag = 0;
 	draw_main_window_box (green (8));
 	draw_ret = do_mt_draw(ox, dx, oy, dy, mt_erase);
+	status_message(NULL,25);
 
 	dx = 0; dy = 0;
 	ox = 0; oy = 0;
@@ -2009,21 +1231,26 @@ mt_draw (int cxp, int cyp, int flag) /* c[xy]p are pixel coordinates */
 
 	if (!draw_ret) {
 	    draw_ret = do_mt_draw(ox, cx, oy, cy, mt_erase);
-	};
-	snprintf(s,STATUS_MESSAGE_LENGTH-1,"%10s: %3d * %20d",
-		 mt_name,mt_cost,
-		 mt_cost * get_type_cost(selected_type));
+	    snprintf(s,STATUS_MESSAGE_LENGTH-1,
+		     "Can't build %s over that!", mt_name);
+	} else { 
+	    snprintf(s,STATUS_MESSAGE_LENGTH-1,
+		     "%d sections of %s will cost %3d to build",
+		     mt_length, mt_name, 
+		     mt_length * get_type_cost(selected_module_type));
+	}
+
 	status_message(s,25);
 	dx = cx; dy = cy;
 	break;
 
     case MT_START:
-	/* we assume that a transport type is selected.   */
+	/* XXX: we assume that a transport type is selected.   */
 
-        if ((mt_grp = get_group_of_type(selected_type)) < 0 )
+        if ((mt_grp = get_group_of_type(selected_module_type)) < 0 )
 	  return 0;
 
-	get_type_name(selected_type,mt_name);
+	get_type_name(selected_module_type,mt_name);
 
 	dx = dy = 0;
 	ox = buttons[LC_MOUSE_LEFTBUTTON-1].mappoint_x;
@@ -2048,7 +1275,6 @@ mt_draw (int cxp, int cyp, int flag) /* c[xy]p are pixel coordinates */
     return (1);
 }
 
-
 int 
 cmp(int n1, int n2)
 {
@@ -2057,3 +1283,84 @@ cmp(int n1, int n2)
     else
 	return 0;
 }
+
+void
+init_mouse_registry()
+{
+    mhandle_first = NULL;
+    mhandle_last = NULL;
+    mhandle_current = NULL;
+    mhandle_count = 0;
+}
+
+/* Add and return an entry in the registry.  Add it at the beginning, so
+   it supercedes earlier entries in mouse_handle_click() */
+Mouse_Handle *
+mouse_register(Rect * r, void (*function)(int, int, int)) 
+{
+    mhandle_current = (Mouse_Handle *)lcalloc(sizeof(Mouse_Handle));
+    mhandle_count++;
+    if (mhandle_first == NULL) {
+	mhandle_current->next = NULL;
+	mhandle_current->prev = NULL;
+    } else {
+	mhandle_current->next = mhandle_first;
+	mhandle_first->prev = mhandle_current;
+	mhandle_current->prev = NULL;
+    }
+
+    mhandle_first = mhandle_current;
+
+    mhandle_current->r = r;
+    mhandle_current->handler = function;
+
+    return mhandle_current;
+}
+
+
+/* Remove an entry from the registry */
+void 
+mouse_unregister(Mouse_Handle * mhandle)
+{
+    if (mhandle->prev == NULL) {
+	if (mhandle_first != mhandle) 
+	    printf("debug: mhandle_first != mhandle\n");
+	if (mhandle->next != NULL) {
+	    mhandle_first = mhandle->next;
+	    mhandle_first->prev = NULL;
+	} else {
+	    mhandle_first = NULL;
+	}
+    } else if (mhandle->next == NULL) {
+	mhandle->prev->next = NULL;
+    } else {
+	mhandle->prev->next = mhandle->next;
+	mhandle->next->prev = mhandle->prev;
+    }
+
+    free(mhandle);
+    mhandle_count--;
+}
+
+/* Loop through the registry until we find a handler for an area.  
+   BEWARE!!!  Some handlers unregister themselves when called.  Assume 
+   mhandle_current is undefined after calling mhandle_current->handler()
+*/
+int 
+mouse_handle_click(int x, int y, int button) 
+{
+    mhandle_current = mhandle_first;
+
+    while (mhandle_current != NULL) {
+	if (mouse_in_rect(mhandle_current->r,x,y)) {
+	    mhandle_current->handler(x - mhandle_current->r->x, 
+				     y - mhandle_current->r->y, button);
+	    return 1;
+	}
+	
+	mhandle_current = mhandle_current->next;
+    }
+
+    return 0;
+}
+    

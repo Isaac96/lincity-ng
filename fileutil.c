@@ -6,6 +6,7 @@
 #include "lcconfig.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h> /* XXX: GCS FIX: What does configure need to know? */
 #include "lcintl.h"
 #include "lcstring.h"
 
@@ -61,11 +62,6 @@
 #endif
 #endif
 
-#if defined (HAVE_POPEN)
-FILE *popen(const char *command, const char *type);
-int pclose(FILE *stream);
-#endif
-
 #include <ctype.h>
 #include "common.h"
 #ifdef LC_X11
@@ -99,18 +95,23 @@ static const char *guess_category_value (int category,
 /* ---------------------------------------------------------------------- *
  * Public Global Variables
  * ---------------------------------------------------------------------- */
-#if defined (WIN32)
-char LIBDIR[_MAX_PATH];
-#elif defined (__EMX__)
-#ifdef LIBDIR
-#undef LIBDIR   /* yes, I know I shouldn't ;-) */
-#endif
-char LIBDIR[256];
-#endif
+char LIBDIR[LC_PATH_MAX];
 
 char *lc_save_dir;
 int lc_save_dir_len;
 static char *lc_temp_filename;
+
+/* The variable make_dir_ok_flag has 2 uses.
+
+   First, it is initialized to 1, and set to zero if the directory 
+   already exists.  Later, if it is found to be 1, the "create directory 
+   help page (ask-dir) is display, and then set to zero.  
+
+   Next, in the help handler, if the user says it's OK to create the 
+   directory, it is reset to 1.  Finally, in the main loop, if it is 
+   found to have value 1, the directory is created and it is reset to 0.
+   */
+int make_dir_ok_flag;
 
 
 /* ---------------------------------------------------------------------- *
@@ -143,6 +144,7 @@ execute_command (char *cmd, char *p1, char *p2, char *p3)
   }
   sprintf (sys_cmd, "%s %s %s %s", cmd, p1, p2, p3);
   ret_value = system (sys_cmd);
+/* fprintf(stderr, "system(%s)=%i\n", sys_cmd, ret_value); */
   free (sys_cmd);
   return ret_value;
 }
@@ -177,10 +179,22 @@ fopen_read_gzipped (char* fn)
     FILE* fp;
 
 #if defined (HAVE_GZIP) && defined (HAVE_POPEN)
+#ifdef __EMX__
+    const char* cmd_str = "gzip -d -c < %s 2> nul";
+#else
     const char* cmd_str = "gzip -d -c < %s 2> /dev/null";
+#endif
     char *cmd = (char*) malloc (strlen (cmd_str) + strlen (fn) + 1);
+    
     sprintf (cmd, cmd_str, fn);
+#ifdef __EMX__
+    fp=popen(cmd,"rb");
+#else
     fp=popen(cmd,"r");
+#endif
+    if (fp==NULL) {
+       fprintf(stderr, "Failed to open pipe cmd: %s\n", cmd);
+    }
     free(cmd);
 
 #elif defined (HAVE_GZIP) && !defined (HAVE_POPEN)
@@ -245,6 +259,7 @@ find_libdir (void)
     const char searchfile[] = "Colour.pal";
     /* default_dir will be something like "C:\\LINCITY1.11" */
     const char default_dir[] = "C:\\LINCITY" VERSION;
+//    const char default_dir[] = "D:\\LINCITY";	/* For GCS's use */
 
     /* Check 1: environment variable */
     _searchenv (searchfile, "LINCITY_HOME", LIBDIR);
@@ -263,11 +278,63 @@ find_libdir (void)
     /* Finally give up */
     HandleError ("Error. Can't find LINCITY_HOME", FATAL);
 }
+
+#elif defined (__EMX__)
+void
+find_libdir (void)
+{
+    strcpy(LIBDIR, __XOS2RedirRoot(OS2_DEFAULT_LIBDIR));
+}
+
+#else /* Unix with configure */
+void
+find_libdir (void)
+{
+    const char searchfile[] = "colour.pal";
+    char *home_dir, *cwd;
+    char cwd_buf[LC_PATH_MAX];
+    char filename_buf[LC_PATH_MAX];
+
+    /* Check 1: environment variable */
+    home_dir = getenv ("LINCITY_HOME");
+    if (home_dir) {
+	snprintf (filename_buf, LC_PATH_MAX, "%s%c%s", 
+		  home_dir, PATH_SLASH, searchfile);
+	if (file_exists(filename_buf)) {
+	    strncpy (LIBDIR, home_dir, LC_PATH_MAX);
+	    return;
+	}
+    }
+
+    /* Check 2: current working directory */
+    cwd = getcwd (cwd_buf, LC_PATH_MAX);
+    if (cwd) {
+	snprintf (filename_buf, LC_PATH_MAX, "%s%c%s", 
+		  cwd_buf, PATH_SLASH, searchfile);
+	if (file_exists(filename_buf)) {
+	    strncpy (LIBDIR, cwd_buf, LC_PATH_MAX);
+	    return;
+	}
+    }
+
+    /* Check 3: default (configuration) directory */
+    snprintf (filename_buf, LC_PATH_MAX, "%s%c%s", 
+	      DEFAULT_LIBDIR, PATH_SLASH, searchfile);
+    if (file_exists(filename_buf)) {
+	strncpy (LIBDIR, DEFAULT_LIBDIR, LC_PATH_MAX);
+	return;
+    }
+
+    /* Finally give up */
+    HandleError ("Error. Can't find LINCITY_HOME", FATAL);
+}
 #endif
 
 
 /* GCS:  This function comes from dcgettext.c in the gettext package.      */
 /* Guess value of current locale from value of the environment variables.  */
+/* GCS Feb 23, 2003.  This was updated in gettext, but I'm going with the  */
+/* old version here. */
 static const char *
 guess_category_value (int category, const char *categoryname)
 {
@@ -283,7 +350,11 @@ guess_category_value (int category, const char *categoryname)
        methods of looking to `LC_ALL', `LC_xxx', and `LANG'.  On some
        systems this can be done by the `setlocale' function itself.  */
 #if defined HAVE_SETLOCALE && defined HAVE_LC_MESSAGES && defined HAVE_LOCALE_NULL
-    return setlocale (category, NULL);
+    retval = setlocale (category, NULL);
+    if (retval != NULL)
+      return retval;
+    else
+      return "C";
 #else
     /* Setting of LC_ALL overwrites all other.  */
     retval = getenv ("LC_ALL");
@@ -306,21 +377,114 @@ guess_category_value (int category, const char *categoryname)
 #endif
 }
 
+/* GCS:  This function is modified from gettext.  It finds the language 
+   portion of the locale. */
+static void 
+lincity_nl_find_language (char *name)
+{
+  while (name[0] != '\0' && name[0] != '_' && name[0] != '@'
+	 && name[0] != '+' && name[0] != ',')
+    ++name;
+
+  *name = '\0';
+}
+
+
+void
+find_localized_paths (void)
+{
+  int messages_done = 0;
+  int help_done = 0;
+
+  const char* intl_suffix = "";
+  char intl_lang[128];
+
+  /* First, try the locale "as is" */
+#if defined (ENABLE_NLS) && defined (HAVE_LC_MESSAGES)
+  intl_suffix = guess_category_value(LC_MESSAGES,"LC_MESSAGES");
+#else
+  intl_suffix = guess_category_value(0,"LC_MESSAGES");
+#endif
+  debug_printf ("GUESS 1 -- intl_suffix is %s\n", intl_suffix);
+  if (strcmp(intl_suffix,"C") && strcmp(intl_suffix,"")) {
+    sprintf (message_path, "%s%c%s%c%s%c", LIBDIR, PATH_SLASH, "messages",
+	     PATH_SLASH, intl_suffix, PATH_SLASH);
+    debug_printf ("Trying Message Path %s\n", message_path);
+    if (directory_exists(message_path)) {
+      debug_printf ("Set Message Path %s\n", message_path);
+      messages_done = 1;
+    }
+    sprintf (help_path, "%s%c%s%c%s%c", LIBDIR, PATH_SLASH, "help",
+	     PATH_SLASH, intl_suffix, PATH_SLASH);
+    debug_printf ("Trying Help Path %s\n", help_path);
+    if (directory_exists(help_path)) {
+      debug_printf ("Set Help Path %s\n", help_path);
+      help_done = 1;
+    }
+  }
+  if (messages_done && help_done) return;
+
+  /* Next, try stripping off the country suffix */
+  strncpy (intl_lang, intl_suffix, 128);
+  intl_lang[127] = '\0';
+  lincity_nl_find_language (intl_lang);
+  intl_suffix = intl_lang;
+  debug_printf ("GUESS 2 -- intl_suffix is %s\n", intl_suffix);
+  if (strcmp(intl_suffix,"C") && strcmp(intl_suffix,"")) {
+    if (!messages_done) {
+      sprintf (message_path, "%s%c%s%c%s%c", LIBDIR, PATH_SLASH, "messages",
+	       PATH_SLASH, intl_suffix, PATH_SLASH);
+      debug_printf ("Trying Message Path %s\n", message_path);
+      if (directory_exists(message_path)) {
+	debug_printf ("Set Message Path %s\n", message_path);
+	messages_done = 1;
+      }
+    }
+    if (!help_done) {
+      sprintf (help_path, "%s%c%s%c%s%c", LIBDIR, PATH_SLASH, "help",
+	       PATH_SLASH, intl_suffix, PATH_SLASH);
+      debug_printf ("Trying Help Path %s\n", help_path);
+      if (directory_exists(help_path)) {
+	debug_printf ("Set Help Path %s\n", help_path);
+	help_done = 1;
+      }
+    }
+  }
+  if (messages_done && help_done) return;
+    
+  /* Finally, settle for default English messages */
+  if (!messages_done) {
+    sprintf (message_path, "%s%c%s%c", LIBDIR, PATH_SLASH, "messages",
+	     PATH_SLASH);
+    debug_printf ("Settling for message Path %s\n", message_path);
+  }
+  if (!help_done) {
+    sprintf (help_path, "%s%c%s%c", LIBDIR, PATH_SLASH, "help",
+	     PATH_SLASH);
+    debug_printf ("Settling for help Path %s\n", help_path);
+  }
+}
+
+
 void
 init_path_strings (void)
 {
     char* homedir = NULL;
     const char* intl_suffix = "";
+    char* dm = NULL;
+    char* td = NULL;
+
+    find_libdir ();
 
 #if defined (WIN32)
-    find_libdir ();
     homedir = LIBDIR;
 #elif defined (__EMX__)
-    strcpy(LIBDIR, __XOS2RedirRoot(OS2_DEFAULT_LIBDIR));
+    homedir = getenv ("HOME");
 #else
     homedir = getenv ("HOME");
 #endif
 
+#if defined (commentout)
 #if defined (ENABLE_NLS)
 #if defined (HAVE_LC_MESSAGES)
     intl_suffix = guess_category_value(LC_MESSAGES,"LC_MESSAGES");
@@ -328,8 +492,9 @@ init_path_strings (void)
     intl_suffix = guess_category_value(0,"LC_MESSAGES");
 #endif
 #endif
-
     printf ("intl_suffix is %s\n", intl_suffix);
+#endif
+
 
     lc_save_dir_len = strlen (homedir) + strlen (LC_SAVE_DIR) + 1;
     if ((lc_save_dir = (char *) malloc (lc_save_dir_len + 1)) == 0)
@@ -344,6 +509,11 @@ init_path_strings (void)
 #endif
     sprintf (graphic_path, "%s%c%s%c", LIBDIR, PATH_SLASH, "icons",
 	     PATH_SLASH);
+
+    
+    find_localized_paths ();
+
+#if defined (commentout)
     if (strcmp(intl_suffix,"C") && strcmp(intl_suffix,"")) {
 	sprintf (message_path, "%s%c%s%c%s%c", LIBDIR, PATH_SLASH, "messages",
 		 PATH_SLASH, intl_suffix, PATH_SLASH);
@@ -366,21 +536,43 @@ init_path_strings (void)
 		 PATH_SLASH);
 	printf ("Default message path %s\n", message_path);
     }
+#endif
+
+
     sprintf (fontfile, "%s%c%s", opening_path, PATH_SLASH,
 	     "iso8859-1-8x8.raw");
 #if defined (WIN32)
     /* GCS: Use windows font for extra speed */
     strcpy (windowsfontfile, LIBDIR);
+#if defined (commentout)
     if (!pix_double)
 	strcat (windowsfontfile, "\\opening\\iso8859-1-8x8.fnt");
     else
 	strcat (windowsfontfile, "\\opening\\iso8859-1-9x15.fnt");
+#endif
+    if (!pix_double)
+	strcat (windowsfontfile, "\\opening\\winfont_8x8.fnt");
+    else
+	strcat (windowsfontfile, "\\opening\\winfont_16x16.fnt");
 #endif
     lc_temp_filename = (char *) malloc (lc_save_dir_len + 16);
     if (lc_temp_filename == 0) {
 	malloc_failure ();
     }
     sprintf (lc_temp_filename, "%s%c%s", lc_save_dir, PATH_SLASH, "tmp-file");
+
+    /* Path for localization */
+#if defined (ENABLE_NLS)
+#if defined (WIN32)
+    sprintf (lc_textdomain_directory, "%s%c%s", LIBDIR, PATH_SLASH, "locale");
+#else
+    strcpy (lc_textdomain_directory, LOCALE_DIR);
+#endif
+    dm = bindtextdomain (PACKAGE, lc_textdomain_directory);
+    debug_printf ("Bound textdomain directory is %s\n", dm);
+    td = textdomain (PACKAGE);
+    debug_printf ("Textdomain is %s\n", td);
+#endif
 }
 
 void
@@ -424,3 +616,64 @@ load_graphic(char *s)
     fclose(inf);
     return(graphic);
 }
+
+void
+undosify_string (char *s)
+{
+    /* Convert '\r\n' to '\n' in string */
+    char prev_char = 0;
+    char *p = s, *q = s;
+    while (*p) {
+	if (*p != '\r') {
+	    if (prev_char == '\r' && *p != '\n') {
+		*q++ = '\n';
+	    }
+	    *q++ = *p;
+	}
+	prev_char = *p;
+        p++;
+    }
+    if (prev_char == '\r') {
+	*q++ = '\n';
+    }
+    *q = '\0';
+}
+
+#if defined (WIN32)
+void
+debug_printf (char* fmt, ...)
+{
+    static int initialized = 0;
+    char* filename = "debug.txt";
+    FILE* fp;
+    va_list argptr;
+
+    fp = fopen(filename, "a");
+    if (!initialized) {
+	initialized = 1;
+	fprintf (fp, "=========================\n");
+    }
+
+    va_start (argptr, fmt);
+    vfprintf (fp, fmt, argptr);
+    va_end (argptr);
+
+    fclose (fp);
+}
+#else
+void
+debug_printf (char* fmt, ...)
+{
+    static int initialized = 0;
+    va_list argptr;
+
+    if (!initialized) {
+	initialized = 1;
+	printf ("=========================\n");
+    }
+
+    va_start (argptr, fmt);
+    vprintf (fmt, argptr);
+    va_end (argptr);
+}
+#endif
